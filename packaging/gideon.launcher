@@ -1,0 +1,22 @@
+#!/bin/sh
+# Launcher for the vendored Gideon runtime.
+#
+# The interpreter runs with -E -s so that a stray PYTHONPATH or ~/.local
+# site-packages can never shadow the vendored numpy/onnxruntime. Because -E also
+# discards PYTHONPATH, the vendored directories are injected into sys.path
+# explicitly rather than through the environment.
+set -e
+GIDEON_HOME="${GIDEON_HOME:-/opt/gideon}"
+export GIDEON_HOME
+export PYTHONDONTWRITEBYTECODE=1
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
+export TOKENIZERS_PARALLELISM=false
+
+exec "$GIDEON_HOME/python/bin/python3" -E -s -c '
+import os, sys, runpy
+home = os.environ["GIDEON_HOME"]
+sys.path[:0] = [os.path.join(home, "lib"), os.path.join(home, "app")]
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+sys.argv[0] = "gideon"
+runpy.run_module("gideon", run_name="__main__", alter_sys=True)
+' "$@"

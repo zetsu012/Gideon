@@ -1,0 +1,33 @@
+[Unit]
+Description=Gideon offline voice assistant
+Documentation=file:/usr/share/doc/gideon/README.md
+After=pipewire.service sound.target
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gideon
+Restart=on-failure
+RestartSec=5
+# Model loading is CPU-heavy at startup; keep it off the interactive path.
+Nice=5
+CPUWeight=50
+# The daemon needs the microphone and nothing else.
+NoNewPrivileges=true
+PrivateDevices=false
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+# AF_INET is required: the Tier 1 brain reaches Ollama over TCP on
+# 127.0.0.1:11434. Without it every LLM call fails with EAFNOSUPPORT and
+# Gideon silently falls back to canned replies.
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+# Localhost only - Gideon has no reason to reach the internet.
+IPAddressAllow=localhost
+IPAddressDeny=any
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target

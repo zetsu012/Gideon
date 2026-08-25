@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure)
+    # Sanity-check the vendored runtime rather than discovering breakage at first run.
+    if ! /opt/gideon/python/bin/python3 -c 'import sys' >/dev/null 2>&1; then
+      echo "gideon: vendored Python runtime failed to execute" >&2
+      exit 1
+    fi
+
+    # Enable for every user session; the daemon needs the user's audio devices,
+    # so it is a user unit, not a system one.
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --global enable gideon.service >/dev/null 2>&1 || true
+    fi
+
+    cat <<'MSG'
+
+  Gideon 0.1 installed.
+
+    Verify   :  gideon --selftest
+    Speak    :  gideon --say "hello"
+    Run now  :  systemctl --user start gideon
+    Logs     :  journalctl --user -u gideon -f
+
+  It starts automatically at your next login. Then say: "hey gideon"
+
+MSG
+    ;;
+esac
+exit 0

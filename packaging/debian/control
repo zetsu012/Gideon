@@ -1,0 +1,21 @@
+Package: gideon
+Version: @VERSION@
+Section: sound
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @SIZE@
+Maintainer: Gideon POC <achhetri@webmd.net>
+Depends: libc6 (>= 2.35), libstdc++6, libgomp1, libportaudio2, libsndfile1
+Recommends: pipewire, pipewire-pulse, wireplumber
+Description: Gideon - always-on offline voice assistant
+ Gideon listens for the phrase "hey gideon" and answers out loud. Speech
+ recognition, wake-phrase matching and speech synthesis all run locally on the
+ CPU; nothing is sent to any network service and no API key is required.
+ .
+ This package is self-contained: it vendors its own Python runtime, all Python
+ dependencies, and the speech models. It therefore installs and runs identically
+ on Ubuntu 24.04 and later regardless of the system Python version, and works
+ with no network connection after installation.
+ .
+ Version 0.1 is a proof of concept: it responds to greetings only and has no
+ tool or command execution.

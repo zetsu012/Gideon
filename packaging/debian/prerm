@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "$1" in
+  remove|deconfigure)
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --global disable gideon.service >/dev/null 2>&1 || true
+      # Stop any running instance in active user sessions.
+      for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+        systemctl --user -M "${uid}@" stop gideon.service >/dev/null 2>&1 || true
+      done
+    fi
+    ;;
+esac
+exit 0

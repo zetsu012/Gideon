@@ -1,0 +1,54 @@
+# Gideon configuration.
+# System defaults live here; override per-user in ~/.config/gideon/config.toml
+
+[audio]
+# input_device  = "alsa_input.pci-0000_00_1f.3.analog-stereo"
+# output_device = "default"
+sample_rate = 16000
+
+[vad]
+vad_threshold   = 0.5     # silero speech probability floor
+silence_end_ms  = 700     # trailing silence that ends an utterance
+max_segment_s   = 15.0
+
+[stt]
+whisper_model   = "tiny.en"   # base.en is more accurate, ~1.6x slower
+whisper_compute = "int8"
+whisper_threads = 4
+
+[wake]
+# Whisper hears "Gideon" as "get in" - consistently, at every model size. These
+# phonetic variants are what actually make the wake phrase work; do not trim them
+# to the ones that "look right". Each keeps a "hey"/"hi" prefix so that ordinary
+# speech containing "get in" does not trigger Gideon.
+wake_phrases = ["hey gideon", "hey get in", "hey guidion", "hey giddy on",
+                "hi gideon", "hi get in", "a gideon", "hey kidding", "hike it in"]
+wake_fuzz    = 0.80       # lower = easier to trigger, more false accepts
+
+[conversation]
+# Seconds after a reply during which Gideon answers without the wake phrase, so a
+# back-and-forth does not need "hey gideon" on every sentence. Say "stop", "never
+# mind" or "thanks" to close the window early.
+followup_window_s = 8.0
+
+[llm]
+# Tier 1 brain. Entirely optional: if Ollama is not installed or not running,
+# Gideon logs it once and falls back to the built-in greetings. Nothing breaks.
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama pull llama3.2:1b
+#
+# Use a NON-reasoning model. qwen3 and deepseek-r1 spend their entire token budget
+# on chain-of-thought before answering: 15-20 s per reply on a laptop CPU, versus
+# ~0.5 s for llama3.2:1b. Measured on an i7-1165G7: 1b = 0.5 s simple / 1.7 s hard,
+# 3b = 2.0 s / 4.3 s. Both answer the same questions correctly.
+llm_enabled = true
+llm_url     = "http://127.0.0.1:11434"
+llm_model   = "llama3.2:1b"   # "llama3.2:3b" is ~2.5x slower, marginally better
+llm_timeout = 30.0
+
+[tts]
+voice = "en_US-lessac-medium"
+speak_greeting_on_start = true
+
+[log]
+log_level = "INFO"
