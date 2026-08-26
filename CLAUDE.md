@@ -6,25 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Gideon: an always-on, fully offline voice assistant for Ubuntu (~470 lines of Python in
 `src/gideon/`). Wake detection, STT and TTS all run locally on CPU. v0.1 is a proof of
-concept with no tool/command execution. Not a git repository.
+concept with no tool/command execution.
 
-Deep references: `docs/ARCHITECTURE.md` (every file + dependency rationale),
-`docs/PLAN.md` (design rationale, roadmap, measured corrections), `README.md` (install/usage).
+Deep references: `docs/README.md` (index), `docs/STRUCTURE.md` (folder layout and its
+rules), `docs/ARCHITECTURE.md` (the pipeline end to end), `docs/DEPENDENCIES.md` (every
+dependency and who installs it), `docs/reference/` (**one page per file**),
+`docs/PLAN.md` (design rationale, roadmap, measured corrections), `README.md` (usage).
+
+**When you add or move a file, mirror it in `docs/reference/` and link it from
+`docs/reference/README.md`; when you add a dependency, update `requirements/`.**
 
 ## Commands
 
 ```bash
 sudo apt install libportaudio2      # once; the only library not vendored
-./packaging/build-deb.sh            # once; stages runtime + models into build/stage/
-./run-local.sh                      # run the working copy in src/
-./run-local.sh --selftest           # load and verify all models; works without PortAudio
-./run-local.sh --say "hi"           # speaker smoke test
-./run-local.sh --once -v            # handle one utterance, verbose transcript logging
-./run-local.sh --setup              # interactive: check install, start daemon, offer key setup
-./run-local.sh --setup-key          # interactive: wire up the push-to-talk key only
+./scripts/build-deb.sh              # once; stages runtime + models into build/stage/
+./scripts/run-local.sh              # run the working copy in src/
+./scripts/run-local.sh --selftest   # load and verify all models; works without PortAudio
+./scripts/run-local.sh --say "hi"   # speaker smoke test
+./scripts/run-local.sh --once -v    # handle one utterance, verbose transcript logging
+./scripts/run-local.sh --setup      # interactive: check install, start daemon, offer key setup
+./scripts/run-local.sh --setup-key  # interactive: wire up the push-to-talk key only
 ```
 
-`run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
+`scripts/run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
 edits take effect on the next run with **no rebuild**. Only re-run `build-deb.sh` when
 dependencies or models change (`VERSION=`, `WHISPER_MODEL=` env overrides; needs `uv`,
 `curl`, `dpkg-deb`, `fakeroot`).
@@ -36,14 +41,16 @@ behaviour is inspected via `systemctl --user {start,restart} gideon` and
 
 ## Architecture
 
-Single-threaded pipeline in `__main__.py`, one module per stage:
+Single-threaded pipeline in `__main__.py`, one package per concern
+(`core/ audio/ speech/ nlu/ llm/ ipc/ cli/ hotkey/` — see `docs/STRUCTURE.md`):
 
-`audio.py` (callback thread → bounded queue, 16 kHz float32 512-sample frames)
-→ `vad.py` (Silero v4 ONNX, per-frame speech probability)
+`audio/capture.py` (callback thread → bounded queue, 16 kHz float32 512-sample frames)
+→ `speech/vad.py` (Silero v4 ONNX, per-frame speech probability)
 → `__main__.segments()` (turns frame probabilities into whole utterances)
-→ `stt.py` (faster-whisper) → `wake.py` (fuzzy transcript match) → `brain.py` (router)
-→ `llm.py` (Ollama over HTTP, optional) → `tts.py` (Piper) → speakers.
-`control.py` sits beside that pipeline: a unix-socket thread that lets an outside
+→ `speech/stt.py` (faster-whisper) → `nlu/wake.py` (fuzzy transcript match)
+→ `nlu/brain.py` (router) → `llm/client.py` (Ollama over HTTP, optional)
+→ `speech/tts.py` (Piper) → speakers.
+`ipc/control.py` sits beside that pipeline: a unix-socket thread that lets an outside
 process arm the daemon (see "Push-to-talk" below).
 
 Key cross-file behaviours that are not obvious from one file:
@@ -65,7 +72,7 @@ Key cross-file behaviours that are not obvious from one file:
   once, and degrades to canned replies — it must never crash or hang the daemon.
 - **Non-reasoning LLM only.** `qwen3`/`deepseek-r1` burn their token budget thinking
   (15–22 s/reply on a laptop CPU vs ~0.5 s for `llama3.2:1b`).
-- **Push-to-talk coexists with the wake phrase.** `control.py` binds
+- **Push-to-talk coexists with the wake phrase.** `ipc/control.py` binds
   `$XDG_RUNTIME_DIR/gideon.sock`; a `wake` line arms `Control` for
   `hotkey_window_s`, and the main loop's `ctrl.consume()` makes the next utterance a
   query (logged `KEY`). It reuses the follow-up path rather than adding a second
@@ -73,7 +80,7 @@ Key cross-file behaviours that are not obvious from one file:
   owns the microphone. `gideon/hotkey/` holds the evdev listener that sends it.
   Those modules are EXECUTED by `/usr/bin/python3`, never imported: evdev is an apt
   package, not part of the vendored runtime, so they import nothing from `gideon`
-  and re-implement the socket path rather than sharing it. `setup.py` (`gideon
+  and re-implement the socket path rather than sharing it. `cli/setup.py` (`gideon
   --setup` / `--setup-key`) shells out to them; it is the only user-facing setup
   path — there is no shell script. `gideon.service` needs `ReadWritePaths=%t` for the
   socket to bind under `ProtectSystem=strict`.
@@ -82,13 +89,27 @@ Key cross-file behaviours that are not obvious from one file:
   merging. Both top-level and one level of TOML sections are flattened onto the dataclass;
   unknown keys are silently dropped. Model paths derive from `GIDEON_HOME`/`GIDEON_MODELS`.
 
+## Layout
+
+`src/gideon/` is one package per concern: `core/` (config), `audio/` (capture),
+`speech/` (vad, stt, tts), `nlu/` (wake, brain), `llm/` (client), `ipc/` (control),
+`cli/` (setup), `hotkey/` (system-python evdev scripts). `scripts/` is what a developer
+runs, `packaging/` is what a user ends up with, `requirements/` declares dependencies.
+Full rules in `docs/STRUCTURE.md`.
+
 ## Packaging
 
-`build-deb.sh` produces a self-contained `.deb`: a vendored relocatable CPython, the resolved
+`scripts/build-deb.sh` produces a self-contained `.deb`: a vendored relocatable CPython, the resolved
 dependency closure, and all models baked in, so installation needs only apt and first run
 needs no network. The launcher runs Python with `-E -s` so a stray `PYTHONPATH` or
 `~/.local` site-packages can never shadow the vendored numpy/onnxruntime — which is why
-`sys.path` is injected explicitly in `packaging/gideon.launcher` and in `run-local.sh`.
+`sys.path` is injected explicitly in `packaging/launcher/gideon.launcher` and in
+`scripts/run-local.sh`.
 Runs as a systemd **user** unit, not system-wide. The Silero VAD download is SHA-pinned to
-v4 (the h/c LSTM-state interface `vad.py` implements) and the build aborts on mismatch.
+v4 (the h/c LSTM-state interface `speech/vad.py` implements) and the build aborts on mismatch.
 `build/` is generated, gitignored, and safe to delete.
+
+Direct Python dependencies live in `requirements/python-runtime.txt`, which the build
+**reads** — add a dependency there, not in the script. The shipped closure is recorded in
+`requirements/python-locked.txt`; apt deps mirror `packaging/debian/control` in
+`requirements/system-apt.txt`. See `docs/DEPENDENCIES.md`.

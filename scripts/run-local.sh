@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Run Gideon straight from the build tree - no .deb, no sudo, no system install.
 #
-# It reuses the vendored runtime and models that packaging/build-deb.sh staged in
+# It reuses the vendored runtime and models that scripts/build-deb.sh staged in
 # build/stage, but runs YOUR working copy in src/ so edits take effect immediately.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE="$ROOT/build/stage/opt/gideon"
 
 if [ ! -x "$STAGE/python/bin/python3" ]; then
-  echo "Build tree missing. Run:  ./packaging/build-deb.sh" >&2
+  echo "Build tree missing. Run:  ./scripts/build-deb.sh" >&2
   exit 1
 fi
 
@@ -27,13 +27,13 @@ Missing PortAudio - Gideon cannot open the microphone or speakers without it:
 
 The .deb declares this as a dependency, so a real install pulls it in
 automatically; only this run-from-source path needs it installed by hand.
-Meanwhile ./run-local.sh --selftest works without it.
+Meanwhile ./scripts/run-local.sh --selftest works without it.
 MSG
   exit 1
 fi
 
 export GIDEON_HOME="$STAGE"
-export GIDEON_CONFIG="${GIDEON_CONFIG:-$ROOT/packaging/config.toml}"
+export GIDEON_CONFIG="${GIDEON_CONFIG:-$ROOT/packaging/config/config.toml}"
 export PYTHONDONTWRITEBYTECODE=1
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
 export HF_HUB_OFFLINE=1

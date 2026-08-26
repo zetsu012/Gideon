@@ -3,15 +3,15 @@ from __future__ import annotations
 import argparse, collections, logging, signal, sys, time
 import numpy as np
 
-from .config import Config
-from .audio import Microphone
-from .vad import VAD
-from .stt import STT
-from .tts import TTS
-from . import wake
-from .control import Control, send as control_send
-from .brain import Brain
-from .llm import LLM
+from .core.config import Config
+from .audio.capture import Microphone
+from .speech.vad import VAD
+from .speech.stt import STT
+from .speech.tts import TTS
+from .nlu import wake
+from .ipc.control import Control, send as control_send
+from .nlu.brain import Brain
+from .llm.client import LLM
 
 log = logging.getLogger("gideon")
 _stop = False
@@ -80,7 +80,7 @@ def main(argv=None) -> int:
     # Setup runs before the model check: diagnosing a broken install is exactly
     # what it is for, so it must not be blocked by one.
     if args.setup or args.setup_key:
-        from . import setup as setup_mod
+        from .cli import setup as setup_mod
         return setup_mod.setup(cfg) if args.setup else setup_mod.setup_key(cfg)
 
     for path in (cfg.vad_path, cfg.voice_path, cfg.whisper_dir):

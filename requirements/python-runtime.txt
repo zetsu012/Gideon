@@ -1,0 +1,15 @@
+# Direct Python dependencies vendored into the .deb.
+#
+# READ BY scripts/build-deb.sh: every non-comment line is passed to
+# `uv pip install --target opt/gideon/lib`. Deliberately unpinned - the build
+# resolves the full transitive closure at package time and bakes it in, so the
+# shipped artifact is reproducible even though this list is not pinned.
+# The resolved closure is recorded in requirements/python-locked.txt.
+#
+# Do not hand-maintain a --no-deps list here: it breaks the moment an upstream
+# adds a transitive dependency (see docs/DEPENDENCIES.md).
+
+faster-whisper        # speech-to-text (CTranslate2 Whisper runtime)
+onnxruntime           # Silero VAD inference
+sounddevice           # PortAudio bindings: microphone capture + playback
+piper-tts             # text-to-speech

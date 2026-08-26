@@ -15,6 +15,8 @@ VOICE="${VOICE:-en_US-lessac-medium}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$HERE")"
+PKG_DIR="$ROOT/packaging"        # deb metadata, systemd unit, launcher, default config
+REQ_DIR="$ROOT/requirements"     # declared dependency manifests (see docs/DEPENDENCIES.md)
 BUILD="${BUILD_DIR:-$ROOT/build}"
 STAGE="$BUILD/stage"
 OPT="$STAGE/opt/gideon"
@@ -43,7 +45,7 @@ step "Installing Python dependencies (CPU-only, no CUDA)"
 # Resolve the real dependency closure, then prune. Hand-pinning a --no-deps list
 # breaks whenever an upstream adds a transitive dep (e.g. huggingface-hub/httpx).
 uv pip install --python "$OPT/python/bin/python3" --target "$OPT/lib" \
-    faster-whisper onnxruntime sounddevice piper-tts >/dev/null
+    $(sed -e 's/#.*//' "$REQ_DIR/python-runtime.txt" | tr -d '\r' | xargs) >/dev/null
 
 step "Fetching models (piper voice, whisper $WHISPER_MODEL, silero VAD)"
 PYTHONPATH="$OPT/lib" "$OPT/python/bin/python3" - "$OPT" "$VOICE" "$WHISPER_MODEL" <<'PY'
@@ -88,17 +90,17 @@ cp -a "$ROOT/src/gideon" "$OPT/app/gideon"
 # which is not in the vendored runtime), so it ships as readable scripts here
 # rather than as an importable part of the app.
 chmod 0755 "$OPT/app/gideon/hotkey"/*.py
-install -m644 "$HERE/config.toml" "$STAGE/etc/gideon/config.toml"
-install -m755 "$HERE/gideon.launcher" "$STAGE/usr/bin/gideon"
-install -m644 "$HERE/gideon.service" "$STAGE/usr/lib/systemd/user/gideon.service"
+install -m644 "$PKG_DIR/config/config.toml" "$STAGE/etc/gideon/config.toml"
+install -m755 "$PKG_DIR/launcher/gideon.launcher" "$STAGE/usr/bin/gideon"
+install -m644 "$PKG_DIR/systemd/gideon.service" "$STAGE/usr/lib/systemd/user/gideon.service"
 install -m644 "$ROOT/README.md" "$STAGE/usr/share/doc/$PKG/README.md" 2>/dev/null || true
 
 INSTALLED_KB=$(du -sk "$STAGE" | cut -f1)
 sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCH@/$ARCH/" -e "s/@SIZE@/$INSTALLED_KB/" \
-    "$HERE/debian/control" > "$STAGE/DEBIAN/control"
-install -m755 "$HERE/debian/postinst" "$STAGE/DEBIAN/postinst"
-install -m755 "$HERE/debian/prerm"    "$STAGE/DEBIAN/prerm"
-install -m644 "$HERE/debian/conffiles" "$STAGE/DEBIAN/conffiles"
+    "$PKG_DIR/debian/control" > "$STAGE/DEBIAN/control"
+install -m755 "$PKG_DIR/debian/postinst" "$STAGE/DEBIAN/postinst"
+install -m755 "$PKG_DIR/debian/prerm"    "$STAGE/DEBIAN/prerm"
+install -m644 "$PKG_DIR/debian/conffiles" "$STAGE/DEBIAN/conffiles"
 
 step "Building .deb"
 OUT="$BUILD/${PKG}_${VERSION}_${ARCH}.deb"

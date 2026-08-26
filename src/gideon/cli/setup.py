@@ -12,11 +12,11 @@ from __future__ import annotations
 import grp, os, shlex, shutil, subprocess, sys
 from pathlib import Path
 
-from .config import Config
-from . import control
+from ..core.config import Config
+from ..ipc import control
 
 SYSTEM_PY = "/usr/bin/python3"
-HOTKEY_DIR = Path(__file__).resolve().parent / "hotkey"
+HOTKEY_DIR = Path(__file__).resolve().parent.parent / "hotkey"
 UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
 HOTKEY_UNIT = UNIT_DIR / "gideon-hotkey.service"
 UDEV_RULE = Path("/etc/udev/rules.d/99-uinput.rules")
@@ -118,7 +118,7 @@ def start_daemon() -> bool:
         return False
     if not systemctl("cat", "gideon.service"):
         warn("gideon.service is not installed (running from a source checkout?)")
-        info("Start it by hand in another terminal:  ./run-local.sh")
+        info("Start it by hand in another terminal:  ./scripts/run-local.sh")
         return False
     systemctl("enable", "--now", "gideon.service")
     state = subprocess.run(["systemctl", "--user", "is-active", "gideon.service"],
@@ -240,7 +240,7 @@ def trigger_command() -> str:
     installed = shutil.which("gideon")
     if installed:
         return f"{installed} --once"
-    local = HOTKEY_DIR.parent.parent.parent / "run-local.sh"       # source checkout
+    local = HOTKEY_DIR.parent.parent.parent / "scripts" / "run-local.sh"       # source checkout
     return f"{local} --once"
 
 

@@ -102,27 +102,27 @@ For hacking on it, without installing anything system-wide:
 
 ```bash
 sudo apt install libportaudio2    # once - the only library not vendored
-./packaging/build-deb.sh          # once - stages the runtime and models
-./run-local.sh                    # start listening
+./scripts/build-deb.sh            # once - stages the runtime and models
+./scripts/run-local.sh            # start listening
 ```
 
 | Command | Does |
 |---|---|
-| `./run-local.sh` | Start listening |
-| `./run-local.sh --selftest` | Verify models — works without PortAudio |
-| `./run-local.sh --say "hi"` | Speaker test |
-| `./run-local.sh --once -v` | Handle one utterance, verbose |
+| `./scripts/run-local.sh` | Start listening |
+| `./scripts/run-local.sh --selftest` | Verify models — works without PortAudio |
+| `./scripts/run-local.sh --say "hi"` | Speaker test |
+| `./scripts/run-local.sh --once -v` | Handle one utterance, verbose |
 
-`run-local.sh` reuses the vendored Python and models staged under `build/stage/`,
+`scripts/run-local.sh` reuses the vendored Python and models staged under `build/stage/`,
 but puts `src/` first on `sys.path`, so your edits take effect on the next run with
 no rebuild. Only re-run `build-deb.sh` when dependencies or models change.
 
 ### Build the package
 
 ```bash
-./packaging/build-deb.sh                          # -> build/gideon_0.1.0_amd64.deb
-WHISPER_MODEL=base.en ./packaging/build-deb.sh    # more accurate, slower
-VERSION=0.2.0 ./packaging/build-deb.sh
+./scripts/build-deb.sh                          # -> build/gideon_0.1.0_amd64.deb
+WHISPER_MODEL=base.en ./scripts/build-deb.sh    # more accurate, slower
+VERSION=0.2.0 ./scripts/build-deb.sh
 ```
 
 Needs `uv`, `curl`, `dpkg-deb` and `fakeroot`. The build bakes the models in, so the
@@ -165,7 +165,7 @@ Commonly changed:
 
 ## Troubleshooting
 
-**It never responds.** Run `./run-local.sh -v` and watch the transcript lines. Every
+**It never responds.** Run `./scripts/run-local.sh -v` and watch the transcript lines. Every
 speech segment is logged with what Whisper heard and whether it matched. If the text
 looks nothing like what you said, the problem is recognition, not matching.
 
@@ -186,10 +186,17 @@ this. Do not trim that list to the entries that look correct — it will stop wo
 
 ## Documentation
 
+Start at **[docs/README.md](docs/README.md)** — the documentation index.
+
 | Document | Contents |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Every file explained, full dependency list with rationale |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md) | Folder layout, where each concern lives, how to add a file |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a spoken sentence becomes a spoken reply, file by file |
+| [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | Every dependency: vendored, apt-installed, or manual |
+| [docs/reference/](docs/reference/README.md) | **One page per file** — purpose, API, invariants |
 | [docs/PLAN.md](docs/PLAN.md) | Design rationale, roadmap, and corrections found by measurement |
+| [docs/HOTKEY.md](docs/HOTKEY.md) | Push-to-talk: design and setup |
+| [docs/NEW-SYSTEM-SETUP.md](docs/NEW-SYSTEM-SETUP.md) | Installing on a fresh machine |
 
 ## Roadmap
 

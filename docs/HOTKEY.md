@@ -7,7 +7,7 @@ just talk. Set it up with `gideon --setup-key` (or as the last step of
 ## How it coexists with the wake phrase
 
 A press does **not** start a second Gideon. It sends `wake` to the control
-socket of the daemon that is already running (`gideon.control`, bound at
+socket of the daemon that is already running (`gideon.ipc.control`, bound at
 `$XDG_RUNTIME_DIR/gideon.sock`), and the daemon treats the next utterance as a
 query - the same code path as the follow-up window, logged `KEY`. The wake
 phrase keeps working the whole time. One process, one microphone, two ways in.

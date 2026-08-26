@@ -72,7 +72,7 @@ the uinput forwarding).
 | --- | --- | --- |
 | `--setup` reports a missing model | broken package | reinstall the `.deb` |
 | `PortAudio not usable` | missing library or no audio session | `sudo apt install libportaudio2`; run in a graphical session |
-| `gideon.service is not installed` | running from a source checkout, not the `.deb` | start it with `./run-local.sh` |
+| `gideon.service is not installed` | running from a source checkout, not the `.deb` | start it with `./scripts/run-local.sh` |
 | `not in the 'input' group` | session predates the `usermod` | log out and back in |
 | whole keyboard stops typing | `/dev/uinput` not writable | re-run `gideon --setup-key` |
 | `no daemon on ...` in the hotkey log | `gideon.service` not running, so presses are slow one-shots | `systemctl --user enable --now gideon` |

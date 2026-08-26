@@ -1,0 +1,9 @@
+# Tools required on the MACHINE THAT BUILDS the .deb. Not needed to run Gideon.
+# scripts/build-deb.sh fails fast with a named error if any is missing.
+
+uv                    # provisions the relocatable CPython and resolves wheels
+curl                  # fetches the SHA-pinned Silero VAD model
+sha256sum             # verifies that download (coreutils)
+dpkg-deb              # assembles the package
+fakeroot              # root-owned file modes without root
+strip                 # binutils; shrinks vendored .so files

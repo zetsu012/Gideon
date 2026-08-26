@@ -1,0 +1,17 @@
+# System packages the .deb declares in its Depends: field.
+#
+# apt installs all of these automatically with `sudo apt install ./gideon_*.deb`.
+# This file mirrors packaging/debian/control - keep the two in sync.
+
+libc6 (>= 2.35)       # base C library
+libstdc++6            # C++ runtime for onnxruntime / ctranslate2
+libgomp1              # OpenMP; CTranslate2 threads Whisper inference across cores
+libportaudio2         # dlopen()ed by sounddevice - the mic and speakers
+libsndfile1           # audio file I/O used by the piper/sounddevice stack
+python3-evdev         # keyboard grab for push-to-talk (system python, not vendored)
+python3               # interpreter that EXECUTES src/gideon/hotkey/* (not the app itself)
+
+# Recommends: (installed by default, not hard requirements)
+pipewire              # audio server
+pipewire-pulse        # PulseAudio compatibility layer
+wireplumber           # PipeWire session manager
