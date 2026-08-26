@@ -9,6 +9,7 @@ from .vad import VAD
 from .stt import STT
 from .tts import TTS
 from . import wake
+from .control import Control, send as control_send
 from .brain import Brain
 from .llm import LLM
 
@@ -64,6 +65,10 @@ def main(argv=None) -> int:
     ap.add_argument("--once", action="store_true", help="handle a single utterance then exit")
     ap.add_argument("--say", metavar="TEXT", help="speak TEXT and exit (audio smoke test)")
     ap.add_argument("--selftest", action="store_true", help="load all models, verify, exit")
+    ap.add_argument("--setup", action="store_true",
+                    help="check the install, start the daemon, offer to wire up a key")
+    ap.add_argument("--setup-key", action="store_true", dest="setup_key",
+                    help="wire up a keyboard key as push-to-talk, nothing else")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
@@ -71,6 +76,12 @@ def main(argv=None) -> int:
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else getattr(logging, cfg.log_level, logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)-12s %(message)s", stream=sys.stderr)
+
+    # Setup runs before the model check: diagnosing a broken install is exactly
+    # what it is for, so it must not be blocked by one.
+    if args.setup or args.setup_key:
+        from . import setup as setup_mod
+        return setup_mod.setup(cfg) if args.setup else setup_mod.setup_key(cfg)
 
     for path in (cfg.vad_path, cfg.voice_path, cfg.whisper_dir):
         if not path.exists():
@@ -97,6 +108,19 @@ def main(argv=None) -> int:
         probe = LLM(cfg.llm_url, cfg.llm_model, cfg.llm_timeout)
         log.info("local LLM: %s", "ready (%s)" % cfg.llm_model if probe.available()
                  else "not available - canned replies will be used")
+        # Push-to-talk round trip: bind, send "wake" the way the hotkey
+        # listener does, and confirm the daemon would treat the next utterance
+        # as a query.
+        probe_sock = Control(window_s=5.0)
+        assert probe_sock.start(), "control socket failed to bind"
+        try:
+            assert control_send(path=probe_sock.path), "control socket did not answer"
+            assert probe_sock.consume(), "wake did not arm the daemon"
+            assert not probe_sock.consume(), "arm was not one-shot"
+        finally:
+            probe_sock.close()
+        log.info("control socket OK (%s)", probe_sock.path)
+
         pcm, sr = tts.synth("Self test passed.")
         log.info("selftest OK (vad+stt+tts+router loaded, %d samples @ %d Hz synthesised)",
                  len(pcm), sr)
@@ -109,6 +133,12 @@ def main(argv=None) -> int:
     if llm is not None and llm.available():
         log.info("local LLM ready: %s", cfg.llm_model)
     brain = Brain(llm)
+
+    # A push-to-talk key talks to this socket; without it the daemon is exactly
+    # as it was, wake-phrase only.
+    ctrl = Control(window_s=cfg.hotkey_window_s) if cfg.control_socket else None
+    if ctrl is not None:
+        ctrl.start()
 
     with Microphone(cfg.sample_rate, cfg.frame, cfg.input_device) as mic:
         if cfg.speak_greeting_on_start:
@@ -125,17 +155,21 @@ def main(argv=None) -> int:
             if not text:
                 continue
 
-            in_window = time.time() < follow_until
+            # The key was pressed while this was being said: no wake phrase
+            # needed, the whole utterance is the query.
+            keyed = ctrl.consume() if ctrl is not None else False
+            in_window = keyed or time.time() < follow_until
             matched, rest = wake.match(text, cfg.wake_phrases, cfg.wake_fuzz)
             if matched:
                 query = rest
             elif in_window:
-                query = text          # follow-up: no wake phrase needed
+                query = text          # key press or follow-up window
             else:
                 log.info("[%.2fs] ---- %r", time.time() - t, text)
                 continue
 
             log.info("[%.2fs] %s %r", time.time() - t,
+                     "KEY" if keyed and not matched else
                      "FOLLOW" if (in_window and not matched) else "WAKE", text)
 
             if query.strip().lower() in ("stop", "never mind", "nevermind",
@@ -159,6 +193,9 @@ def main(argv=None) -> int:
             follow_until = time.time() + cfg.followup_window_s
             if args.once:
                 break
+
+    if ctrl is not None:
+        ctrl.close()
     log.info("stopped")
     return 0
 

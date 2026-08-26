@@ -17,6 +17,10 @@ NoNewPrivileges=true
 PrivateDevices=false
 ProtectSystem=strict
 ProtectHome=read-only
+# ProtectSystem=strict makes the whole hierarchy read-only, which would stop the
+# push-to-talk control socket from binding. %t is the user runtime dir
+# (/run/user/UID) - the only place the daemon writes.
+ReadWritePaths=%t
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectControlGroups=true

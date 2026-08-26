@@ -19,12 +19,13 @@ case "$1" in
 
   Gideon 0.1 installed.
 
+    Set up   :  gideon --setup        <- start here
     Verify   :  gideon --selftest
     Speak    :  gideon --say "hello"
-    Run now  :  systemctl --user start gideon
     Logs     :  journalctl --user -u gideon -f
 
-  It starts automatically at your next login. Then say: "hey gideon"
+  It starts automatically at your next login. Then say: "hey gideon".
+  To use a keyboard key instead of the wake phrase:  gideon --setup-key
 
 MSG
     ;;

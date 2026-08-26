@@ -5,7 +5,8 @@ Priority: optional
 Architecture: @ARCH@
 Installed-Size: @SIZE@
 Maintainer: Gideon POC <achhetri@webmd.net>
-Depends: libc6 (>= 2.35), libstdc++6, libgomp1, libportaudio2, libsndfile1
+Depends: libc6 (>= 2.35), libstdc++6, libgomp1, libportaudio2, libsndfile1,
+ python3-evdev, python3
 Recommends: pipewire, pipewire-pulse, wireplumber
 Description: Gideon - always-on offline voice assistant
  Gideon listens for the phrase "hey gideon" and answers out loud. Speech

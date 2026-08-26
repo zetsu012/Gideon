@@ -51,6 +51,15 @@ class Config:
     # room does not get treated as a question.
     followup_window_s: float = 8.0
 
+    # Push-to-talk: a unix socket the hotkey listener sends "wake" to, so a key
+    # press arms the *running* daemon instead of starting a second one. Set
+    # control_socket = false to disable the socket entirely.
+    control_socket: bool = True
+    # How long a key press stays armed. Longer than the follow-up window: the
+    # press comes *before* the sentence, so it has to cover the pause while the
+    # user gathers their thought.
+    hotkey_window_s: float = 10.0
+
     # tier 1 brain (optional; absent Ollama degrades to canned replies)
     llm_enabled: bool = True
     llm_url: str = "http://127.0.0.1:11434"

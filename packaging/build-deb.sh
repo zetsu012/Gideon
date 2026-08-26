@@ -84,6 +84,10 @@ find "$OPT/lib" "$OPT/python" -name '*.so*' -type f -print0 2>/dev/null \
 
 step "Staging application"
 cp -a "$ROOT/src/gideon" "$OPT/app/gideon"
+# gideon/hotkey/* is executed by the SYSTEM python (it needs python3-evdev,
+# which is not in the vendored runtime), so it ships as readable scripts here
+# rather than as an importable part of the app.
+chmod 0755 "$OPT/app/gideon/hotkey"/*.py
 install -m644 "$HERE/config.toml" "$STAGE/etc/gideon/config.toml"
 install -m755 "$HERE/gideon.launcher" "$STAGE/usr/bin/gideon"
 install -m644 "$HERE/gideon.service" "$STAGE/usr/lib/systemd/user/gideon.service"

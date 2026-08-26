@@ -20,6 +20,8 @@ sudo apt install libportaudio2      # once; the only library not vendored
 ./run-local.sh --selftest           # load and verify all models; works without PortAudio
 ./run-local.sh --say "hi"           # speaker smoke test
 ./run-local.sh --once -v            # handle one utterance, verbose transcript logging
+./run-local.sh --setup              # interactive: check install, start daemon, offer key setup
+./run-local.sh --setup-key          # interactive: wire up the push-to-talk key only
 ```
 
 `run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
@@ -41,6 +43,8 @@ Single-threaded pipeline in `__main__.py`, one module per stage:
 → `__main__.segments()` (turns frame probabilities into whole utterances)
 → `stt.py` (faster-whisper) → `wake.py` (fuzzy transcript match) → `brain.py` (router)
 → `llm.py` (Ollama over HTTP, optional) → `tts.py` (Piper) → speakers.
+`control.py` sits beside that pipeline: a unix-socket thread that lets an outside
+process arm the daemon (see "Push-to-talk" below).
 
 Key cross-file behaviours that are not obvious from one file:
 
@@ -61,6 +65,18 @@ Key cross-file behaviours that are not obvious from one file:
   once, and degrades to canned replies — it must never crash or hang the daemon.
 - **Non-reasoning LLM only.** `qwen3`/`deepseek-r1` burn their token budget thinking
   (15–22 s/reply on a laptop CPU vs ~0.5 s for `llama3.2:1b`).
+- **Push-to-talk coexists with the wake phrase.** `control.py` binds
+  `$XDG_RUNTIME_DIR/gideon.sock`; a `wake` line arms `Control` for
+  `hotkey_window_s`, and the main loop's `ctrl.consume()` makes the next utterance a
+  query (logged `KEY`). It reuses the follow-up path rather than adding a second
+  one. The point is that a key press must NOT start a second Gideon - the daemon
+  owns the microphone. `gideon/hotkey/` holds the evdev listener that sends it.
+  Those modules are EXECUTED by `/usr/bin/python3`, never imported: evdev is an apt
+  package, not part of the vendored runtime, so they import nothing from `gideon`
+  and re-implement the socket path rather than sharing it. `setup.py` (`gideon
+  --setup` / `--setup-key`) shells out to them; it is the only user-facing setup
+  path — there is no shell script. `gideon.service` needs `ReadWritePaths=%t` for the
+  socket to bind under `ProtectSystem=strict`.
 - **Config resolution.** `Config.load()` reads the first existing of `$GIDEON_CONFIG`,
   `~/.config/gideon/config.toml`, `/etc/gideon/config.toml` — first file wins entirely, no
   merging. Both top-level and one level of TOML sections are flattened onto the dataclass;
