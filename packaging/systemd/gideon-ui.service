@@ -1,0 +1,20 @@
+[Unit]
+Description=Gideon tray indicator
+Documentation=file:/usr/share/doc/gideon/README.md
+# The indicator is a graphical client, so it belongs to the desktop session and
+# not to the daemon: it deliberately starts even when gideon.service is dead,
+# because "Gideon is not running" is exactly the thing it exists to tell you.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gideon --ui
+Restart=on-failure
+RestartSec=3
+# It reconnects to the daemon's socket on its own, so a daemon restart must not
+# take the icon down with it.
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

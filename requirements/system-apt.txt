@@ -15,3 +15,14 @@ python3               # interpreter that EXECUTES src/gideon/hotkey/* (not the a
 pipewire              # audio server
 pipewire-pulse        # PulseAudio compatibility layer
 wireplumber           # PipeWire session manager
+#
+# The tray indicator (gideon --ui). Recommends, not Depends: the daemon is fully
+# functional headless, and a server install should not pull in GTK. All four run
+# on the SYSTEM python - src/gideon/ui/* is EXECUTED, never imported, exactly
+# like src/gideon/hotkey/*.
+python3-gi            # PyGObject: the GTK binding
+python3-gi-cairo      # PyGObject's cairo bridge - without it the drawn HUD orb
+                      # fails at RUNTIME, not import time; the window still opens
+gir1.2-gtk-3.0        # GTK 3 typelib (GTK 4 cannot share a process with the
+                      # indicator library below, which links GTK 3)
+gir1.2-ayatanaappindicator3-0.1   # StatusNotifierItem tray icon

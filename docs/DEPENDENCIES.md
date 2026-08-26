@@ -44,7 +44,20 @@ one. See `requirements/build-tools.txt`.
 | `libgomp1` | OpenMP — the multi-threading that makes CPU inference fast. |
 | `libportaudio2` | **The microphone and speakers.** `sounddevice` dlopen's it at runtime. The one library not vendored, because audio must use the system's own stack. |
 | `libsndfile1` | Audio file decoding used by the audio stack. |
+| `python3-evdev` | Push-to-talk key grab. Runs on the **system** python; `hotkey/` is executed, never imported. |
+| `python3` | The interpreter that executes `hotkey/` and `ui/`. |
 | *Recommends:* `pipewire`, `pipewire-pulse`, `wireplumber` | Ubuntu's audio server. Already present on any normal desktop. |
+| *Recommends:* `python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`, `gir1.2-ayatanaappindicator3-0.1` | The tray indicator (`gideon --ui`). **Recommends, not Depends:** the daemon is fully functional headless and a server install has no reason to pull in GTK. Like `hotkey/`, `ui/` runs on the system python. |
+
+**Why GTK is not vendored.** The bundled closure exists so the daemon runs identically on any
+Ubuntu ≥ 24.04 with no network. GTK, PyGObject, their typelibs and the whole GObject stack
+would multiply the package size to satisfy a *desktop* component that is meaningless without
+a desktop session — one that, if present, already has all of it installed. So the indicator
+follows the `hotkey/` rule instead: apt packages, system python, executed not imported.
+
+**`python3-gi-cairo` is easy to miss.** Its absence is not an import error — GTK loads, the
+window appears, and only the drawn parts fail at runtime with *"couldn't find foreign struct
+converter for cairo.Context"*. `gideon --ui` probes for it up front and prints the apt line.
 
 ## 4. Python packages — bundled inside the `.deb`, nothing to install
 

@@ -27,6 +27,8 @@ sudo apt install libportaudio2      # once; the only library not vendored
 ./scripts/run-local.sh --once -v    # handle one utterance, verbose transcript logging
 ./scripts/run-local.sh --setup      # interactive: check install, start daemon, offer key setup
 ./scripts/run-local.sh --setup-key  # interactive: wire up the push-to-talk key only
+./scripts/run-local.sh --ui         # tray icon + HUD + health panel (needs GTK from apt)
+./scripts/run-local.sh --ui --health # one-shot text health report; exit 1 if offline
 ```
 
 `scripts/run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
@@ -42,7 +44,7 @@ behaviour is inspected via `systemctl --user {start,restart} gideon` and
 ## Architecture
 
 Single-threaded pipeline in `__main__.py`, one package per concern
-(`core/ audio/ speech/ nlu/ llm/ ipc/ cli/ hotkey/` — see `docs/STRUCTURE.md`):
+(`core/ audio/ speech/ nlu/ llm/ ipc/ cli/ hotkey/ ui/` — see `docs/STRUCTURE.md`):
 
 `audio/capture.py` (callback thread → bounded queue, 16 kHz float32 512-sample frames)
 → `speech/vad.py` (Silero v4 ONNX, per-frame speech probability)
@@ -51,7 +53,8 @@ Single-threaded pipeline in `__main__.py`, one package per concern
 → `nlu/brain.py` (router) → `llm/client.py` (Ollama over HTTP, optional)
 → `speech/tts.py` (Piper) → speakers.
 `ipc/control.py` sits beside that pipeline: a unix-socket thread that lets an outside
-process arm the daemon (see "Push-to-talk" below).
+process arm the daemon (see "Push-to-talk" below) and streams `core/state.py`'s
+`StatusBus` to the tray indicator in `ui/` (see "The indicator" below).
 
 Key cross-file behaviours that are not obvious from one file:
 
@@ -84,6 +87,22 @@ Key cross-file behaviours that are not obvious from one file:
   --setup` / `--setup-key`) shells out to them; it is the only user-facing setup
   path — there is no shell script. `gideon.service` needs `ReadWritePaths=%t` for the
   socket to bind under `ProtectSystem=strict`.
+- **The indicator is the daemon's only window.** `core/state.py` holds a `StatusBus` -
+  pipeline state (`idle`/`listening`/`thinking`/`speaking`/`followup`) plus one health entry
+  per subsystem - that `__main__.py` stamps at each transition and `ipc/control.py` streams
+  over `subscribe`. `gideon/ui/` (tray icon, on-screen HUD, health panel) is a pure view of
+  it: every health row is a fact the daemon published or something the UI just measured,
+  never a constant. Rules that matter: publish a window's deadline BEFORE the state that
+  depends on it, or the bus ticker expires it instantly; the fan-out is non-blocking and
+  drops updates, because nothing may stall the mic; `Control.start()` pings before unlinking
+  an existing socket, so a second instance cannot steal it from the daemon that owns the
+  microphone. `--selftest` binds a scratch path for the same reason.
+- **`ui/` follows the `hotkey/` rule.** GTK and PyGObject are apt packages, not vendored, so
+  `ui/*.py` are EXECUTED by `/usr/bin/python3` and import nothing from `gideon` - they
+  re-state the socket path and the state names instead. `cli/ui.py` (`gideon --ui`) is the
+  bridge. GTK **3**, not 4: the AppIndicator library links GTK 3 and the two cannot share a
+  process. The HUD re-execs onto XWayland because Mutter has no layer-shell, so a
+  Wayland-native window cannot be placed or kept on top.
 - **Config resolution.** `Config.load()` reads the first existing of `$GIDEON_CONFIG`,
   `~/.config/gideon/config.toml`, `/etc/gideon/config.toml` — first file wins entirely, no
   merging. Both top-level and one level of TOML sections are flattened onto the dataclass;
@@ -91,9 +110,10 @@ Key cross-file behaviours that are not obvious from one file:
 
 ## Layout
 
-`src/gideon/` is one package per concern: `core/` (config), `audio/` (capture),
+`src/gideon/` is one package per concern: `core/` (config, state), `audio/` (capture),
 `speech/` (vad, stt, tts), `nlu/` (wake, brain), `llm/` (client), `ipc/` (control),
-`cli/` (setup), `hotkey/` (system-python evdev scripts). `scripts/` is what a developer
+`cli/` (setup, ui), `hotkey/` (system-python evdev scripts), `ui/` (system-python GTK
+indicator). `scripts/` is what a developer
 runs, `packaging/` is what a user ends up with, `requirements/` declares dependencies.
 Full rules in `docs/STRUCTURE.md`.
 

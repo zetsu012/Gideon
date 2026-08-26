@@ -50,6 +50,17 @@ journalctl --user -u gideon -f     # watch it listen
 
 It starts automatically at every login from now on. Say **"hey gideon"**.
 
+To see that it is running — a tray icon with the live state, an on-screen HUD and a health
+panel:
+
+```bash
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+systemctl --user enable --now gideon-ui
+gideon --ui --health           # or the same thing as text, over ssh
+```
+
+See [docs/INDICATOR.md](docs/INDICATOR.md).
+
 ### 3. Give it a brain (optional)
 
 Without this, Gideon answers greetings and honestly says it cannot do more.
@@ -196,6 +207,7 @@ Start at **[docs/README.md](docs/README.md)** — the documentation index.
 | [docs/reference/](docs/reference/README.md) | **One page per file** — purpose, API, invariants |
 | [docs/PLAN.md](docs/PLAN.md) | Design rationale, roadmap, and corrections found by measurement |
 | [docs/HOTKEY.md](docs/HOTKEY.md) | Push-to-talk: design and setup |
+| [docs/INDICATOR.md](docs/INDICATOR.md) | Tray icon, HUD and health panel |
 | [docs/NEW-SYSTEM-SETUP.md](docs/NEW-SYSTEM-SETUP.md) | Installing on a fresh machine |
 
 ## Roadmap

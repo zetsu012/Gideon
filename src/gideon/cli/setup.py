@@ -149,6 +149,7 @@ def setup(cfg: Config) -> int:
         warn("Fix the above, then re-run:  gideon --setup")
         return 1
     start_daemon()
+    setup_indicator()
 
     say("Push-to-talk key (optional)")
     info("A key on an external keyboard can stand in for the wake phrase: press")
@@ -158,6 +159,40 @@ def setup(cfg: Config) -> int:
         info("Later:  gideon --setup-key")
         return 0
     return setup_key(cfg)
+
+
+def setup_indicator() -> bool:
+    """Offer the tray indicator.
+
+    A daemon with no window is indistinguishable from a dead one, so this is
+    part of the ordinary setup rather than an extra. It is still optional: the
+    GTK bindings are apt packages that a headless box has no reason to carry,
+    and Gideon answers exactly the same without them.
+    """
+    say("Tray indicator (recommended)")
+    info("A tray icon that shows whether Gideon is running and what he is doing")
+    info("right now, plus a health panel with one row per subsystem.")
+    from . import ui as ui_mod
+    if not ui_mod.have_gtk():
+        info("It needs GTK from apt: " + " ".join(ui_mod.APT_PACKAGES))
+        if not ask("Install them?"):
+            info("Later:  sudo apt install " + " ".join(ui_mod.APT_PACKAGES))
+            return False
+        run(["apt-get", "install", "-y", *ui_mod.APT_PACKAGES], sudo=True, quiet=False)
+        if not ui_mod.have_gtk():
+            warn("GTK still unavailable; skipping the indicator")
+            return False
+    ok("GTK available")
+    if not systemctl("cat", "gideon-ui.service"):
+        # Source checkout: there is no unit to enable, but the command works.
+        info("running from a checkout - start it with:  gideon --ui")
+        return True
+    systemctl("enable", "--now", "gideon-ui.service")
+    if systemctl("is-active", "--quiet", "gideon-ui.service"):
+        ok("indicator running - look for the microphone icon in the tray")
+    else:
+        warn("indicator did not start:  journalctl --user -u gideon-ui -e")
+    return True
 
 
 # --------------------------------------------------------------------------- #

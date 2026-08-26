@@ -90,9 +90,13 @@ cp -a "$ROOT/src/gideon" "$OPT/app/gideon"
 # which is not in the vendored runtime), so it ships as readable scripts here
 # rather than as an importable part of the app.
 chmod 0755 "$OPT/app/gideon/hotkey"/*.py
+# gideon/ui/* is the same story: GTK and PyGObject are apt packages, not part of
+# the vendored closure, so the tray indicator is executed by the system python.
+chmod 0755 "$OPT/app/gideon/ui"/*.py
 install -m644 "$PKG_DIR/config/config.toml" "$STAGE/etc/gideon/config.toml"
 install -m755 "$PKG_DIR/launcher/gideon.launcher" "$STAGE/usr/bin/gideon"
 install -m644 "$PKG_DIR/systemd/gideon.service" "$STAGE/usr/lib/systemd/user/gideon.service"
+install -m644 "$PKG_DIR/systemd/gideon-ui.service" "$STAGE/usr/lib/systemd/user/gideon-ui.service"
 install -m644 "$ROOT/README.md" "$STAGE/usr/share/doc/$PKG/README.md" 2>/dev/null || true
 
 INSTALLED_KB=$(du -sk "$STAGE" | cut -f1)

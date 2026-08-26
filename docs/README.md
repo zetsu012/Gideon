@@ -13,6 +13,7 @@ and speech synthesis all run locally on the CPU.
 | [`DEPENDENCIES.md`](DEPENDENCIES.md) | every dependency: vendored, apt-installed, or manual |
 | [`PLAN.md`](PLAN.md) | why it is built this way, the roadmap, and measurements that changed the design |
 | [`HOTKEY.md`](HOTKEY.md) | push-to-talk: design and setup |
+| [`INDICATOR.md`](INDICATOR.md) | the tray icon, the HUD and the health panel |
 | [`NEW-SYSTEM-SETUP.md`](NEW-SYSTEM-SETUP.md) | installing on a fresh machine |
 | [`reference/`](reference/README.md) | **one document per file** — purpose, API, invariants |
 
@@ -26,6 +27,8 @@ and speech synthesis all run locally on the CPU.
 | Build the package | [`reference/scripts/build-deb.md`](reference/scripts/build-deb.md) |
 | Run without installing | [`reference/scripts/run-local.md`](reference/scripts/run-local.md) |
 | Wire up a key | [`HOTKEY.md`](HOTKEY.md), [`reference/src/gideon/hotkey/listener.md`](reference/src/gideon/hotkey/listener.md) |
+| See whether Gideon is running | `gideon --ui --health`, or [`INDICATOR.md`](INDICATOR.md) |
+| Add a subsystem to the health panel | [`reference/src/gideon/core/state.md`](reference/src/gideon/core/state.md) — one `health_set()` call is enough |
 
 ## Conventions
 

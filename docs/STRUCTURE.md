@@ -25,9 +25,16 @@ Gideon/
 │   ├── llm/
 │   │   └── client.py               Ollama HTTP client (Tier 1, optional)
 │   ├── ipc/
-│   │   └── control.py              Unix socket that arms push-to-talk
+│   │   └── control.py              Unix socket: arms push-to-talk, publishes status
 │   ├── cli/
-│   │   └── setup.py                `gideon --setup` / `--setup-key`
+│   │   ├── setup.py                `gideon --setup` / `--setup-key`
+│   │   └── ui.py                   `gideon --ui` — execs the indicator
+│   ├── ui/                         Tray indicator — SYSTEM python, never imported
+│   │   ├── feed.py                 Subscribes to the daemon; reconnects; decides "offline"
+│   │   ├── theme.py                One palette and wording; draws the icons
+│   │   ├── hud.py                  On-screen overlay: state, transcript, reply
+│   │   ├── panel.py                Health panel: one row per subsystem
+│   │   └── tray.py                 The indicator itself (entry point)
 │   └── hotkey/                     evdev key listener — SYSTEM python, never imported
 │       ├── device.py               Resolve a device by name; permission diagnostics
 │       ├── listener.py             Grab the key, re-inject the rest, signal the daemon
@@ -76,19 +83,23 @@ Gideon/
 | `speech/` | the three models | each file wraps exactly one model and knows nothing of the pipeline |
 | `nlu/` | interpretation | pure functions and rules; no I/O, no models |
 | `llm/` | the optional brain | may fail freely — its absence must cost nothing |
-| `ipc/` | out-of-band signals | one socket, one bit |
+| `ipc/` | out-of-band signals | one socket: the arm bit in, the status feed out |
 | `cli/` | user-facing flows | interactive, allowed to shell out |
 | `hotkey/` | keyboard | **the boundary**: runs on the system python, imports nothing from `gideon` |
+| `ui/` | the desktop face | **the same boundary**: GTK is apt, so these are executed, never imported |
 
 `__main__.py` is the only file that knows the full order of operations. Every module below
 it can be read alone.
 
 ## The two boundaries that are not stylistic
 
-1. **`hotkey/` never imports `gideon`.** `python3-evdev` is an apt package outside the
-   vendored runtime, so those modules are *executed* by `/usr/bin/python3`, never imported.
-   That is why `hotkey/listener.py` re-implements the control-socket path instead of
-   importing `ipc/control.py` — change one, change both.
+1. **`hotkey/` and `ui/` never import `gideon`.** `python3-evdev` and PyGObject/GTK are apt
+   packages outside the vendored runtime, so those modules are *executed* by
+   `/usr/bin/python3`, never imported. That is why `hotkey/listener.py` **and**
+   `ui/feed.py` each re-implement the control-socket path instead of importing
+   `ipc/control.py`, and why `ui/feed.py` re-states the state names from `core/state.py` —
+   change one, change both. `cli/setup.py` and `cli/ui.py` are the bridges: they *exec*
+   these scripts, never import them.
 2. **`scripts/` vs `packaging/`.** `scripts/` is what a developer runs; `packaging/` is what
    a user ends up with. A file belongs in exactly one.
 

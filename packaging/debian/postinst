@@ -13,6 +13,9 @@ case "$1" in
     # so it is a user unit, not a system one.
     if command -v systemctl >/dev/null 2>&1; then
       systemctl --global enable gideon.service >/dev/null 2>&1 || true
+      # The indicator is wanted by graphical-session.target, so enabling it on a
+      # headless machine costs nothing: it simply never starts.
+      systemctl --global enable gideon-ui.service >/dev/null 2>&1 || true
     fi
 
     cat <<'MSG'
@@ -22,6 +25,7 @@ case "$1" in
     Set up   :  gideon --setup        <- start here
     Verify   :  gideon --selftest
     Speak    :  gideon --say "hello"
+    Indicator:  gideon --ui           <- tray icon, live state, health panel
     Logs     :  journalctl --user -u gideon -f
 
   It starts automatically at your next login. Then say: "hey gideon".

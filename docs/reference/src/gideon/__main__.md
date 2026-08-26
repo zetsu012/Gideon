@@ -61,3 +61,23 @@ call `llm.reset()`.
 |---|---|
 | Imports | `.core.config`, `.audio.capture`, `.speech.{vad,stt,tts}`, `.nlu.{wake,brain}`, `.ipc.control`, `.llm.client`, lazily `.cli.setup` |
 | Imported by | nothing — it is the entry module |
+
+
+## Status stamping
+
+The loop reports into a `core.state.StatusBus`, which is what the tray indicator and the HUD
+render (see [core/state.md](core/state.md)). The bus is built **before** the model check, so
+even a failure during loading is visible.
+
+| Point in the loop | Stamp |
+|---|---|
+| `segments(..., on_speech)` opens a segment | `LISTENING` — the leading edge matters: an indicator that lit up only after the sentence ended would always be one beat behind the speaker |
+| segment closes | `THINKING` |
+| transcript, whatever it was | `heard(text, kind)` with `kind` = `wake` / `key` / `follow` / `ignored` |
+| not for us | back to `resting`, which is `FOLLOWUP` if the window is still open, else `IDLE` |
+| before `tts.say()` | `SPEAKING` |
+| after the reply | `windows(follow_until=…)` **then** `FOLLOWUP` — the reverse order lets the bus ticker see a stale deadline and snap straight to `IDLE` |
+| model / device / LLM load | `health_set(...)` per subsystem |
+
+A missing Ollama is recorded as **unhealthy but not fatal**: it is a supported configuration,
+and "why are the answers canned" is exactly the question the health panel exists to answer.

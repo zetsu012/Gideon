@@ -132,16 +132,33 @@ Piper synthesises to an in-memory WAV, which is decoded to PCM and played throug
 `sounddevice`. Synthesis and playback are separate so `--selftest` can verify
 synthesis on a machine with no sound card.
 
-### `src/gideon/ipc/control.py` (125 lines) — push-to-talk socket
-A unix socket at `$XDG_RUNTIME_DIR/gideon.sock`. A `wake` line arms the **running**
-daemon for `hotkey_window_s`, and the next utterance is treated as a query — the key
-press must not start a second Gideon, because the daemon already owns the microphone.
-Binding failure is never fatal: the daemon simply has no push-to-talk.
+### `src/gideon/core/state.py` — what Gideon is doing
+A `StatusBus`: the pipeline's current state (`idle` / `listening` / `thinking` / `speaking` /
+`followup`) plus one health entry per subsystem. `__main__.py` stamps it at every transition;
+the indicator renders it and nothing else. Writers take a short lock and fan out through
+non-blocking callbacks, because the pipeline is single-threaded and nothing may block it.
+One small thread expires the follow-up and push-to-talk windows, which end by the clock
+rather than by anything the pipeline does.
 
-### `src/gideon/cli/setup.py` (305 lines) — interactive setup
-`gideon --setup` and `--setup-key`. Checks the install, starts the user daemon, and wires
-a keyboard key by shelling out to `hotkey/` under the **system** python. The only
-user-facing setup path; there is no shell script.
+### `src/gideon/ipc/control.py` — control socket and status feed
+A unix socket at `$XDG_RUNTIME_DIR/gideon.sock`, doing two jobs. A `wake` line arms the
+**running** daemon for `hotkey_window_s`, and the next utterance is treated as a query — the
+key press must not start a second Gideon, because the daemon already owns the microphone.
+A `subscribe` line streams the `StatusBus` as JSON on every change, which is what the tray
+icon and the HUD render; `status` returns one snapshot. Binding failure is never fatal: the
+daemon simply has no push-to-talk and no indicator. `start()` refuses to unlink a socket that
+still answers `ping`, so a second instance can never steal it from the daemon that owns the mic.
+
+### `src/gideon/ui/` — the indicator (system python)
+Tray icon, on-screen HUD and health panel, subscribed to that feed. Separate process, GTK,
+apt-installed: a hung UI cannot touch the microphone, and a dead daemon leaves an icon that
+says so. See [INDICATOR.md](INDICATOR.md).
+
+### `src/gideon/cli/setup.py` — interactive setup
+`gideon --setup` and `--setup-key`. Checks the install, starts the user daemon, offers the
+indicator, and wires a keyboard key by shelling out to `hotkey/` under the **system** python.
+The only user-facing setup path; there is no shell script. `cli/ui.py` is the same bridge for
+`gideon --ui`.
 
 ### `src/gideon/hotkey/` — keyboard listener (system python)
 Grabs one key on one keyboard and re-injects the rest through uinput, then signals the
