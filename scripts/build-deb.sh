@@ -86,6 +86,11 @@ find "$OPT/lib" "$OPT/python" -name '*.so*' -type f -print0 2>/dev/null \
 
 step "Staging application"
 cp -a "$ROOT/src/gideon" "$OPT/app/gideon"
+# Bytecode from a developer's own interpreter is dead weight here and actively
+# misleading for hotkey/ and ui/, which are executed by the SYSTEM python: the
+# .pyc left behind by a local test run is for neither that interpreter nor the
+# vendored one.
+find "$OPT/app/gideon" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
 # gideon/hotkey/* is executed by the SYSTEM python (it needs python3-evdev,
 # which is not in the vendored runtime), so it ships as readable scripts here
 # rather than as an importable part of the app.

@@ -96,6 +96,23 @@ a window or keep it above others. The HUD needs both, so the process re-execs it
 `gideon --ui --no-x11` to stay on the native backend; the HUD then appears wherever the
 compositor decides. `gideon --ui --no-hud` drops the overlay entirely.
 
+## "no control socket after 10s"
+
+`gideon --setup` prints this when the unit is active but nothing answers on the socket. The
+daemon is running and still hears you; it just cannot be reached out of band, so the key and
+the indicator are both dead. Restart it — `systemctl --user restart gideon` — and re-run the
+check. If it recurs, `journalctl --user -u gideon -e | grep control` will show whether the
+bind itself failed (a second Gideon, or `ReadWritePaths=%t` missing from the unit).
+
+## Checking it yourself
+
+```bash
+gideon --ui --health        # is the daemon up, and is every subsystem healthy?
+gideon --ui --self-check    # does the HUD appear for the right turns, and only those?
+```
+
+Both exit non-zero on failure, so they work in a script.
+
 ## When there is no icon
 
 1. `gideon --ui --health` — if that prints a state, the daemon is fine and only the tray is

@@ -264,10 +264,28 @@ def pick_keyboard() -> str | None:
 
 
 def learn_key(device: str) -> bool:
+    """Record the trigger key, with the listener stood down.
+
+    An already-running listener holds an exclusive grab on the keyboard, so its
+    events reach that process and nothing else. Learning would then wait forever
+    on a key press it can never see - which is exactly what happens the second
+    time someone runs this, to change their key. So stop it first, and put it
+    back if the learning step does not succeed.
+    """
+    was_running = systemctl("is-active", "--quiet", "gideon-hotkey.service")
+    if was_running:
+        info("stopping the running key listener so it releases the keyboard")
+        systemctl("stop", "gideon-hotkey.service")
     say("Press the key you want to use")
     info("It is recorded, not consumed - it still mutes until the service runs.")
-    return as_input([SYSTEM_PY, str(HOTKEY_DIR / "listener.py"),
-                     "--device", device, "--learn"]).returncode == 0
+    learned = as_input([SYSTEM_PY, str(HOTKEY_DIR / "listener.py"),
+                        "--device", device, "--learn"]).returncode == 0
+    if not learned and was_running:
+        # Leave the machine as we found it; install_unit() starts it again on
+        # the success path.
+        systemctl("start", "gideon-hotkey.service")
+        info("restarted the previous key listener")
+    return learned
 
 
 def trigger_command() -> str:

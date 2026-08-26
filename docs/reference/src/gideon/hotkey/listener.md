@@ -53,3 +53,23 @@ constant: in practice the trigger command is always supplied by `gideon --setup-
 | Runs on | system python, as `gideon-hotkey.service` |
 | Requires | `input` group membership; `/etc/udev/rules.d/99-uinput.rules` for re-injection |
 | See also | `docs/HOTKEY.md`, `docs/reference/src/gideon/ipc/control.md` |
+
+
+## `--learn` and the exclusive grab
+
+`learn_key()` watches the keyboard **un-grabbed** and records the first key that goes down.
+That only works if nothing else holds the device — and the most likely something else is a
+`gideon-hotkey` listener an earlier setup left running, which grabs it exclusively. Its
+events then reach that process alone, so `--learn` would wait forever while the user pressed
+the key over and over: a silent hang with no diagnosis.
+
+So the grab is probed for up front with `grab()`/`ungrab()`; `EBUSY` means somebody else owns
+the device, and the message names the fix (`systemctl --user stop gideon-hotkey`). A 60 s
+`selectors` timeout is the backstop for everything else — most often "that is not the
+keyboard you are pressing".
+
+A running listener is visible in `/dev/input/`: it creates a uinput mirror called
+`gideon-hotkey (<device name>)` to re-inject the keys it is not consuming, so the mirror's
+presence is a reliable sign that the real device is grabbed.
+
+`cli/setup.py` stops the service before learning, so the interactive path never hits this.

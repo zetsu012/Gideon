@@ -29,6 +29,7 @@ sudo apt install libportaudio2      # once; the only library not vendored
 ./scripts/run-local.sh --setup-key  # interactive: wire up the push-to-talk key only
 ./scripts/run-local.sh --ui         # tray icon + HUD + health panel (needs GTK from apt)
 ./scripts/run-local.sh --ui --health # one-shot text health report; exit 1 if offline
+./scripts/run-local.sh --ui --self-check  # assert which turns the HUD shows
 ```
 
 `scripts/run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
@@ -37,7 +38,10 @@ dependencies or models change (`VERSION=`, `WHISPER_MODEL=` env overrides; needs
 `curl`, `dpkg-deb`, `fakeroot`).
 
 There is no test suite. `--selftest` is the check: it loads every model and asserts wake
-matching, the Tier 0 router and TTS synthesis. Add new invariants there. Installed
+matching, the Tier 0 router, TTS synthesis, and the control socket (status feed, and that a
+second daemon neither steals nor deletes a live socket). Add new invariants there. The UI has
+its own, `gideon --ui --self-check`, because GTK cannot be imported from the vendored runtime:
+it asserts **which turns the HUD shows** - key press and wake match yes, ambient speech no. Installed
 behaviour is inspected via `systemctl --user {start,restart} gideon` and
 `journalctl --user -u gideon -f`.
 

@@ -38,3 +38,18 @@ values on whitespace and device names contain spaces.
 | Imports | `..core.config`, `..ipc.control`, stdlib `grp`/`shutil`/`subprocess` |
 | Imported by | `__main__`, lazily, before the model check |
 | See also | `docs/HOTKEY.md` |
+
+
+## `learn_key()` stands the listener down
+
+An already-running key listener holds an exclusive grab on the keyboard, so learning a new
+key would block forever on a press it can never see. This is specifically the **second** run
+— the one where someone changes their key, having succeeded the first time. So `learn_key()`
+stops `gideon-hotkey.service` first and, if learning does not succeed, starts it again so the
+machine is left as it was found. On the success path `install_unit()` starts it.
+
+## `setup_indicator()`
+
+Offered as part of the ordinary flow, because a daemon with no window is indistinguishable
+from a dead one. Still optional: GTK is apt-installed and a headless box has no reason to
+carry it. In a source checkout there is no unit to enable, so it prints `gideon --ui` instead.

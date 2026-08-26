@@ -61,3 +61,31 @@ python3 /opt/gideon/app/gideon/hotkey/confirm_keycode.py "NAME"
 | the whole keyboard stops typing | `/dev/uinput` not writable; re-run `gideon --setup-key` |
 | `no daemon on ...` in the log | `gideon.service` is not running, so presses are slow one-shots |
 | press arms, nothing happens | nothing was said within `hotkey_window_s` |
+
+
+## "Press the button …" never returns
+
+The keyboard is already grabbed — almost always by a `gideon-hotkey` listener from an earlier
+setup. A grabbed device delivers its events to the grabber alone, so the learning step cannot
+see the press no matter how many times you hit the key.
+
+```bash
+systemctl --user stop gideon-hotkey     # gideon --setup-key does this for you
+```
+
+You can confirm it from the device list: a running listener creates a uinput mirror named
+`gideon-hotkey (<your keyboard>)`, so if that node exists, the real device is grabbed.
+
+Since this fix, `listener.py --learn` probes for the grab and says so instead of hanging.
+
+## The key stopped arming the daemon
+
+If the key silently does nothing, check the control socket before suspecting the keyboard:
+
+```bash
+gideon --ui --health          # or: systemctl --user restart gideon
+```
+
+The listener's fallback, when the daemon cannot be reached, is to run a one-shot Gideon. So
+a stranded socket looks like "the key is dead" while the wake phrase keeps working perfectly
+— the two paths are independent.

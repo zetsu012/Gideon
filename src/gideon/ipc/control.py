@@ -62,6 +62,9 @@ class Control:
         self._stop = threading.Event()
         self._feeds: set[queue.Queue] = set()
         self._feeds_lock = threading.Lock()
+        # Whether *this* instance owns the socket file. Only the owner may
+        # unlink it - see close().
+        self._bound = False
 
     # -- daemon side -------------------------------------------------------
     def start(self) -> bool:
@@ -92,6 +95,7 @@ class Control:
                 self.bus.health_set("control", False, str(exc))
             return False
         self._sock = sock
+        self._bound = True
         self._thread = threading.Thread(target=self._accept, name="control", daemon=True)
         self._thread.start()
         if self.bus is not None:
@@ -207,10 +211,17 @@ class Control:
             self.bus.unsubscribe(self._publish)
         if self._sock is not None:
             self._sock.close()
-        try:
-            self.path.unlink()
-        except OSError:
-            pass
+        # Only unlink what we bound. A second Gideon that started, found the
+        # socket already served and declined to take it over would otherwise
+        # delete the *running* daemon's socket on its way out - leaving a
+        # perfectly healthy daemon holding an unnamed socket that the key, the
+        # tray and `--setup` can no longer reach.
+        if self._bound:
+            self._bound = False
+            try:
+                self.path.unlink()
+            except OSError:
+                pass
 
 
 def send(command: str = "wake", path: Path | None = None, timeout: float = 1.0) -> bool:

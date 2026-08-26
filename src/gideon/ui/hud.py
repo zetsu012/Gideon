@@ -151,6 +151,7 @@ class Hud(Gtk.Window):
         self._anim = None
         self._hide_at = 0.0
         self._engaged = False      # is this turn addressed to Gideon? (see below)
+        self._invited = False      # key pressed, or follow-up window open
         self._last_heard_at = 0.0
         self._hide_timer = GLib.timeout_add(250, self._maybe_hide)
 
@@ -224,6 +225,7 @@ class Hud(Gtk.Window):
         heard_at = snap.get("transcript_at", 0.0)
         kind = snap.get("transcript_kind", "")
         invited = bool(snap.get("armed")) or snap.get("follow_for", 0) > 0
+        self._invited = invited
 
         if state == feed.LISTENING and heard_at <= self._last_heard_at:
             # A new utterance has begun and nothing has been transcribed for it
@@ -266,7 +268,14 @@ class Hud(Gtk.Window):
             self.text_label.set_text("“%s”" % text)
             self._set_reply(snap.get("reply", ""))
 
-        wanted = state == feed.OFFLINE or (self._engaged and state in feed.ACTIVE)
+        # `invited` matters on its own: pressing the key arms Gideon while he is
+        # still idle - nothing has been said yet - and that is precisely the
+        # moment the prompt needs to be on screen. Requiring an ACTIVE state
+        # here made the key silent until the user had already started talking,
+        # which is the wrong way round for the one gesture that exists to say
+        # "listen to me now".
+        wanted = state == feed.OFFLINE or (
+            self._engaged and (state in feed.ACTIVE or self._invited))
         if wanted:
             self._hide_at = 0.0
             self._show()

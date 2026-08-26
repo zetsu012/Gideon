@@ -166,6 +166,14 @@ def main(argv=None) -> int:
             pushed = json.loads(lines.readline())
             assert pushed["state"] == st.LISTENING, pushed
             feed.close()
+            # A second daemon must decline the socket AND leave it alone: the
+            # loser unlinking it on exit would strand the running daemon with a
+            # socket no key, tray or setup check could ever reach again.
+            loser = Control(path=probe_path, window_s=5.0)
+            assert not loser.start(), "a second daemon took over a live socket"
+            loser.close()
+            assert probe_path.exists(), "a second daemon deleted the live socket"
+            assert control_send("ping", path=probe_path), "the owner stopped answering"
         finally:
             probe_sock.close()
             probe_bus.close()

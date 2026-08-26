@@ -5,6 +5,7 @@
 ```bash
 gideon --ui                 # or: python3 src/gideon/ui/tray.py
 gideon --ui --health        # one text snapshot, no GUI; exit 1 if offline
+gideon --ui --self-check    # assert which turns the HUD shows; exit 1 on failure
 gideon --ui --no-hud        # tray icon and health panel only
 gideon --ui --no-x11        # stay on the native backend
 ```
@@ -33,3 +34,20 @@ gideon --ui --no-x11        # stay on the native backend
 
 `--health` is deliberately GUI-free: it is what to run over ssh, in a script, or when the
 tray itself is the thing that looks broken.
+
+
+## `--self-check`
+
+`gideon --selftest` runs on the vendored interpreter and cannot import GTK, so the UI needs
+its own check. What it asserts is not that widgets construct — it is the one rule with real
+consequences: **which turns reach the screen**. Both directions are bugs the user notices
+within a minute: a HUD that stays dark when the key is pressed, or one that puts every
+passing conversation on the desktop.
+
+`SELF_CHECK` is a scripted conversation — key press, keyed query, follow-up, a neighbour
+talking, a wake phrase from cold, the daemon dying — each with the visibility it must
+produce. Add a row when you change the engagement rules in `hud.py`.
+
+It pumps the GTK loop for 400 ms per step before looking, because withdrawal is deferred to a
+250 ms timer: asking straight after `apply()` reports every hide as a failure, since the HUD
+is on its way out rather than staying up.

@@ -208,6 +208,66 @@ class Tray:
             self.panel.refresh()
 
 
+# --------------------------------------------------------------------------- #
+# Self-check
+# --------------------------------------------------------------------------- #
+# The daemon's invariants are asserted by `gideon --selftest`, but it runs on the
+# vendored interpreter and cannot import GTK, so the UI needs its own. What is
+# worth asserting here is not that widgets construct - it is the one rule with
+# real consequences: *which turns reach the screen*. Getting it wrong in either
+# direction is a bug the user notices immediately - a HUD that stays dark when
+# they press the key, or one that puts every passing conversation on the desktop.
+SELF_CHECK = [
+    # (label, expected visibility, snapshot overrides)
+    ("key pressed, still idle",       True,  dict(state=feed.IDLE, armed=True)),
+    ("speaking after the key",        True,  dict(state=feed.LISTENING, armed=True)),
+    ("transcribing after the key",    True,  dict(state=feed.THINKING, armed=True)),
+    ("answered a keyed query",        True,  dict(state=feed.SPEAKING, transcript="what time is it",
+                                                  transcript_kind="key", transcript_at=2.0,
+                                                  reply="Just past three.")),
+    ("follow-up window open",         True,  dict(state=feed.FOLLOWUP, follow_for=8.0,
+                                                  transcript="what time is it",
+                                                  transcript_kind="key", transcript_at=2.0)),
+    ("someone else starts talking",   False, dict(state=feed.LISTENING)),
+    ("...being transcribed",          False, dict(state=feed.THINKING)),
+    ("...and it was not for Gideon",  False, dict(state=feed.IDLE, transcript="anyway i told him",
+                                                  transcript_kind="ignored", transcript_at=3.0)),
+    ("wake phrase, not yet ruled on", False, dict(state=feed.LISTENING)),
+    ("wake phrase matched",           True,  dict(state=feed.THINKING, transcript="hey gideon hello",
+                                                  transcript_kind="wake", transcript_at=4.0)),
+    ("daemon gone",                   True,  dict(state=feed.OFFLINE)),
+]
+
+
+def self_check() -> int:
+    """Drive the HUD through a scripted conversation and check what it shows."""
+    hud = Hud()
+    base = dict(type="status", state=feed.IDLE, transcript="", transcript_kind="",
+                reply="", armed=False, follow_for=0.0, transcript_at=0.0)
+    failures = 0
+    for label, expected, over in SELF_CHECK:
+        snap = dict(base)
+        snap.update(over)
+        hud.apply(snap)
+        # Withdrawal is deferred to a 250 ms timer, so the loop has to actually
+        # run before asking what is on screen. Checking straight after apply()
+        # would report every hide as a failure - the HUD is on its way out, not
+        # staying up.
+        deadline = time.time() + 0.4
+        while time.time() < deadline:
+            while Gtk.events_pending():
+                Gtk.main_iteration_do(False)
+            time.sleep(0.02)
+        got = hud.get_visible()
+        if got != expected:
+            failures += 1
+        print("  %-4s %-34s hud %s (wanted %s)"
+              % ("ok" if got == expected else "FAIL", label,
+                 "shown" if got else "hidden", "shown" if expected else "hidden"))
+    print("selftest %s" % ("OK" if not failures else "FAILED (%d)" % failures))
+    return 1 if failures else 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="gideon-ui", description="Gideon tray indicator")
     ap.add_argument("--no-hud", action="store_true",
@@ -216,6 +276,8 @@ def main(argv=None) -> int:
                     help="stay on the native backend; the HUD may be misplaced on Wayland")
     ap.add_argument("--health", action="store_true",
                     help="print one health snapshot as text and exit")
+    ap.add_argument("--self-check", action="store_true", dest="self_check",
+                    help="assert which turns the HUD shows, then exit")
     args = ap.parse_args(argv)
 
     if args.health:
@@ -241,6 +303,9 @@ def main(argv=None) -> int:
 
     if not args.no_hud and not args.no_x11 and want_x11():
         reexec_on_x11()                                   # does not return
+
+    if args.self_check:
+        return self_check()
 
     lock = claim_singleton()
     if lock is None:

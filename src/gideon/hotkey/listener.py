@@ -19,7 +19,7 @@ systemd unit can be edited without touching this file:
     GIDEON_TRIGGER_CMD     command line to run on key-down     (--command)
 """
 from __future__ import annotations
-import argparse, errno, logging, os, shlex, signal, socket, subprocess, sys, time
+import argparse, errno, logging, os, selectors, shlex, signal, socket, subprocess, sys, time
 from pathlib import Path
 
 try:
@@ -156,24 +156,55 @@ def pump(dev: InputDevice, codes: set[int], trigger: AgentTrigger, forward: bool
             ui.close()
 
 
-def learn_key(name: str) -> int:
-    """Watch the keyboard un-grabbed until a key goes down, and remember it."""
+def learn_key(name: str, timeout_s: float = 60.0) -> int:
+    """Watch the keyboard un-grabbed until a key goes down, and remember it.
+
+    The device must not already be grabbed by anything - most obviously by a
+    gideon-hotkey listener that an earlier setup left running. A grabbed device
+    delivers its events to the grabber alone, so this loop would wait forever
+    while the user pressed the key over and over. That is a silent hang with no
+    diagnosis, so the grab is probed for up front and the timeout is a backstop.
+    """
     path = resolve_by_name(name)
     if path is None:
         sys.exit(permission_hint() or
                  f"no input device matching {name!r} - is the keyboard connected?")
     dev = InputDevice(path)
-    print(f"Press the button you want to wake Gideon (on {dev.name!r}) ... ", flush=True)
+
+    # grab()/ungrab() is the direct test: EBUSY means somebody else owns it.
     try:
-        for event in dev.read_loop():
-            if event.type == ecodes.EV_KEY and event.value == 1:
-                code = event.code
-                break
-        else:                                        # read_loop ended: device gone
-            sys.exit("keyboard disconnected before a key was pressed")
+        dev.grab()
+        dev.ungrab()
+    except OSError as exc:
+        dev.close()
+        if exc.errno == errno.EBUSY:
+            sys.exit(f"{dev.name!r} is already grabbed by another process, so this "
+                     f"would never see your key press.\n"
+                     f"Almost always the key listener itself:\n"
+                     f"    systemctl --user stop gideon-hotkey\n"
+                     f"then try again (gideon --setup-key stops it for you).")
+        sys.exit(f"cannot read {dev.name!r}: {exc}")
+
+    print(f"Press the button you want to wake Gideon (on {dev.name!r}) ... ", flush=True)
+    selector = selectors.DefaultSelector()
+    selector.register(dev, selectors.EVENT_READ)
+    deadline = time.monotonic() + timeout_s
+    code = None
+    try:
+        while code is None:
+            if not selector.select(max(0.0, deadline - time.monotonic())):
+                sys.exit(f"\nno key press seen in {timeout_s:.0f}s. Is {dev.name!r} "
+                         f"the keyboard you are pressing?")
+            for event in dev.read():
+                if event.type == ecodes.EV_KEY and event.value == 1:
+                    code = event.code
+                    break
     except KeyboardInterrupt:
         sys.exit("\naborted")
+    except OSError:
+        sys.exit("keyboard disconnected before a key was pressed")
     finally:
+        selector.close()
         dev.close()
     key = key_name(code)
     LEARNED.parent.mkdir(parents=True, exist_ok=True)

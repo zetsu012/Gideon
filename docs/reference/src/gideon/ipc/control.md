@@ -92,3 +92,10 @@ rather than unlinking if anything answers. Without that check a second daemon �
 `--selftest` — would take the socket away from the instance that owns the microphone: the key
 would arm the wrong process, and the tray would faithfully report the state of a daemon that
 cannot hear you. `--selftest` additionally binds a scratch path under `/tmp`, never the real one.
+
+**`close()` unlinks only what this instance bound** (`_bound`). The declining instance above
+still runs `close()` on its way out, and an unconditional `unlink()` there would delete the
+*running* daemon's socket — leaving a perfectly healthy daemon holding an unnamed socket that
+the key, the tray and `gideon --setup` can never reach again. The daemon keeps answering the
+microphone, so nothing in the log looks wrong; only the socket file is gone. `--selftest`
+asserts both halves: the second instance must decline, and must leave the file alone.
