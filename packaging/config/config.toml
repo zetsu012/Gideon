@@ -25,6 +25,24 @@ wake_phrases = ["hey gideon", "hey get in", "hey guidion", "hey giddy on",
                 "hi gideon", "hi get in", "a gideon", "hey kidding", "hike it in"]
 wake_fuzz    = 0.80       # lower = easier to trigger, more false accepts
 
+[speaker]
+# Who may wake Gideon. The wake phrase is matched in the TRANSCRIPT, so without
+# this anyone in the room who says "hey gideon" is answered. Run `gideon --enroll`
+# (with the daemon stopped) to record your voiceprint; until you do, verification
+# stays off and says so on the tray's "Voice lock" row - it fails open on purpose,
+# so a failed model download cannot silently stop Gideon answering you.
+speaker_verify    = true
+# Cosine similarity floor against your enrolled voiceprint. Measured with a
+# 5-phrase enrollment: the owner scores 0.66 on a bare "hey gideon" and 0.81-0.85
+# on a full sentence, while other speakers saying the same words score -0.22 to
+# 0.13. Raise towards 0.60 for a stricter door and the occasional repeated wake
+# phrase; lower it if your own voice is being turned away.
+speaker_threshold = 0.45
+# Also verify inside the follow-up window. Off by default because the window can
+# only be open after a turn that was already verified - but while it is open,
+# anyone in the room can speak into it. Turn this on to close that gap.
+speaker_verify_followup = false
+
 [conversation]
 # Seconds after a reply during which Gideon answers without the wake phrase, so a
 # back-and-forth does not need "hey gideon" on every sentence. Say "stop", "never
@@ -45,6 +63,24 @@ llm_enabled = true
 llm_url     = "http://127.0.0.1:11434"
 llm_model   = "llama3.2:1b"   # "llama3.2:3b" is ~2.5x slower, marginally better
 llm_timeout = 30.0
+
+# Where Tier 1 answers come from: "ollama", "cerebras" or "openrouter".
+#
+# "ollama" is the default and the only one that keeps Gideon fully offline. The
+# other two are cloud APIs: they are much faster and much better at answering,
+# and they send your transcribed speech to that company. Wake detection,
+# speech-to-text and the voice always stay on this machine.
+#
+# Do not set these by hand - run `gideon --provider`. It stores the API key in
+# ~/.config/gideon/credentials.toml (mode 0600) instead of here, because this
+# file is world-readable, and it writes the choice to your user config.
+#
+# If the cloud provider is unreachable, out of credit or slow, Gideon falls back
+# to the local model above, and then to canned replies. A dropped connection
+# costs you the better model, not the assistant.
+llm_provider  = "ollama"
+cloud_model   = ""            # e.g. "llama3.1-8b", "meta-llama/llama-3.3-70b-instruct"
+cloud_timeout = 12.0          # shorter than llm_timeout on purpose: this is speech
 
 [tts]
 voice = "en_US-lessac-medium"

@@ -6,7 +6,7 @@ availability probing fails once, is logged once, and the caller falls back to th
 built-in canned replies. Gideon must never crash or hang because a model is absent.
 """
 from __future__ import annotations
-import json, logging, socket, urllib.error, urllib.request
+import json, logging, re, socket, urllib.error, urllib.request
 from collections import deque
 
 log = logging.getLogger("gideon.llm")
@@ -79,7 +79,7 @@ class LLM:
             return None
 
         msg = data.get("message") or {}
-        reply = _strip_think((msg.get("content") or "").strip())
+        reply = for_speech(_strip_think((msg.get("content") or "").strip()))
 
         # Reasoning models (qwen3, deepseek-r1, ...) spend the whole token budget
         # thinking and return an empty content with done_reason "length" - at CPU
@@ -109,6 +109,36 @@ class LLM:
 
     def reset(self) -> None:
         self._history.clear()
+
+
+# Markdown reaches the speakers as noise: Piper pronounces bullets and pipes, or
+# swallows them and runs two table cells into one sentence. SYSTEM already asks
+# for plain prose and the local models comply, but a cloud model is free to
+# ignore it - gpt-oss in particular answers in tables and headings by default -
+# and the reply is spoken before anyone can see it. So strip the markup rather
+# than trusting the instruction.
+_MD_LINE = re.compile(r"^\s{0,3}(#{1,6}\s+|>\s+|[-*+]\s+|\d+[.)]\s+)")
+_MD_TABLE = re.compile(r"^\s*\|?[\s:|-]{5,}\|?\s*$")     # table rules: |---|:--|
+_MD_RULE = re.compile(r"^\s*([-*_])\s*(\1\s*){2,}$")   # horizontal rules: --- *** ___
+_MD_INLINE = re.compile(r"(\*\*|__|\*|_|`{1,3}|~~)")
+
+
+def for_speech(text: str) -> str:
+    """Flatten markdown into something worth reading out loud."""
+    lines = []
+    for raw in text.splitlines():
+        if _MD_TABLE.match(raw) or _MD_RULE.match(raw):   # says nothing aloud
+            continue
+        line = _MD_LINE.sub("", raw)
+        if "|" in line:                   # table row -> comma-separated clause
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            line = ", ".join(c for c in cells if c)
+        lines.append(line.strip())
+    text = " ".join(l for l in lines if l)
+    text = _MD_INLINE.sub("", text)
+    # [label](url) -> label; the URL is unspeakable either way.
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _strip_think(text: str) -> str:

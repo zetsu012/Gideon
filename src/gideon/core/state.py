@@ -54,7 +54,7 @@ class StatusBus:
         self.state = STARTING
         self.state_since = self.started_at
         self.transcript = ""          # last thing Whisper heard
-        self.transcript_kind = ""     # wake | follow | key | ignored
+        self.transcript_kind = ""     # wake | follow | key | ignored | denied
         self.transcript_at = 0.0
         self.reply = ""               # last thing Gideon said
         self.partial = ""             # reserved: streaming transcript, if ever

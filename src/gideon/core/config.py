@@ -45,6 +45,27 @@ class Config:
     wake_fuzz: float = 0.80         # difflib ratio floor; raised because the
                                     # variant list now covers the real mishearings
 
+    # speaker verification
+    # Wake matching is transcript matching: it cannot tell WHO spoke, so without
+    # this any visitor who says "hey gideon" is served. An ECAPA-TDNN embeds the
+    # utterance and it is accepted only if it resembles the voiceprint written by
+    # `gideon --enroll`. Deliberately fail-open: with no voiceprint enrolled the
+    # daemon behaves exactly as it did before, warns once, and shows a degraded
+    # health row - a failed model download must not silently mute the assistant.
+    speaker_verify: bool = True
+    # Cosine similarity floor against the enrolled centroid. Measured on this
+    # checkpoint with a 4-utterance enrollment: the owner scores 0.66 on a bare
+    # "hey gideon" and 0.81-0.85 on a full sentence, while two other speakers
+    # saying the same words score -0.22 to 0.13. The gap is wide, so 0.45 sits
+    # far from both sides and leaves room for mic and room noise, which compress
+    # the owner's score more than a synthetic test can show. Raise towards 0.60
+    # for a stricter door at the cost of the occasional repeated wake phrase.
+    speaker_threshold: float = 0.45
+    # Verification costs one embedding (~20 ms) per candidate utterance, so it
+    # only runs where it buys something. The follow-up window is deliberately
+    # NOT gated by default: it opens only after an already-verified turn.
+    speaker_verify_followup: bool = False
+
     # conversation
     # Seconds after a reply during which Gideon answers without the wake phrase.
     # Long enough for a real follow-up, short enough that background talk in the
@@ -62,6 +83,18 @@ class Config:
 
     # tier 1 brain (optional; absent Ollama degrades to canned replies)
     llm_enabled: bool = True
+    # Where Tier 1 answers come from: "ollama" (local, the default and the only
+    # one that keeps Gideon fully offline), "cerebras" or "openrouter". A cloud
+    # provider sends your transcribed speech off this machine, so it is never a
+    # default and the daemon logs it at every startup. Set with `gideon --provider`.
+    llm_provider: str = "ollama"
+    # The model id at that provider (e.g. "llama3.1-8b",
+    # "meta-llama/llama-3.3-70b-instruct"). Ignored when llm_provider = "ollama",
+    # which uses llm_model below. They are separate settings so that switching
+    # providers back and forth does not lose either choice - and because the
+    # local model stays configured as the fallback when the cloud is unreachable.
+    cloud_model: str = ""
+    cloud_timeout: float = 12.0
     llm_url: str = "http://127.0.0.1:11434"
     # Must be a NON-reasoning model. qwen3/deepseek-r1 spend their whole token
     # budget thinking before answering, which costs 15-20 s on a laptop CPU.
@@ -101,6 +134,14 @@ class Config:
     @property
     def vad_path(self) -> Path:
         return MODELS / "vad" / "silero_vad.onnx"
+
+    @property
+    def speaker_path(self) -> Path:
+        return MODELS / "speaker" / "ecapa_tdnn512_lm.onnx"
+
+    @property
+    def voiceprint_path(self) -> Path:
+        return Path(os.path.expanduser("~/.config/gideon/voiceprint.npy"))
 
     @property
     def whisper_dir(self) -> Path:

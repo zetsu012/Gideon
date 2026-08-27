@@ -9,7 +9,9 @@ and the `need` checks in `scripts/build-deb.sh`. See
 [`docs/reference/requirements/README.md`](reference/requirements/README.md).
 
 **Summary.** One apt command installs everything required. The vendored Python, all 28
-Python packages and all three models are inside the package — first run needs no network.
+Python packages and all four models are inside the package — first run needs no network.
+Cloud providers (`gideon --provider`) are spoken to with `urllib` rather than a vendor SDK,
+so they add **no dependency and no bytes** to the package; only network use at runtime.
 The only things a user ever installs manually are `libportaudio2` when running from source,
 and Ollama if they want real answers instead of canned ones.
 
@@ -67,7 +69,7 @@ converter for cairo.Context"*. `gideon --ui` probes for it up front and prints t
 |---|---|---|
 | `faster-whisper` 1.2.1 | 2 MB | Speech to text. A reimplementation of OpenAI Whisper that is ~4× faster and lower-memory. |
 | `ctranslate2` 4.8.1 | 70 MB | The inference engine faster-whisper runs on. Provides the `int8` quantisation that makes CPU transcription viable. |
-| `onnxruntime` 1.29.0 | 61 MB | Runs the two ONNX models: Silero VAD and the Piper voice. |
+| `onnxruntime` 1.29.0 | 61 MB | Runs the three ONNX models: Silero VAD, the ECAPA speaker embedder and the Piper voice. |
 | `piper-tts` 1.7.0 | 46 MB | Text to speech, including a bundled espeak-ng for phonemisation. |
 
 **Support**
@@ -95,6 +97,7 @@ v0.1 does not use it — see `docs/ARCHITECTURE.md` §6.
 | `faster-whisper tiny.en` | 75 MB | Speech recognition, English-only. |
 | `piper en_US-lessac-medium` | 61 MB | The voice you hear. |
 | `silero_vad.onnx` (v4) | 1.8 MB | Decides which frames contain speech. |
+| `ecapa_tdnn512_lm.onnx` | 24 MB | Speaker embedding: decides whether the enrolled owner is speaking. WeSpeaker's ONNX export is used precisely so this needs no PyTorch — it runs on the `onnxruntime` already present for the VAD. SHA-pinned like Silero. |
 
 ## 6. Optional — the Tier 1 brain (Ollama)
 
@@ -121,7 +124,7 @@ budget on chain-of-thought before answering — 15–22 s per reply on this CPU,
 | Tool | Role |
 |---|---|
 | `uv` | Fetches the relocatable CPython and resolves the wheels. |
-| `curl`, `sha256sum` | Fetch and verify Silero VAD. |
+| `curl`, `sha256sum` | Fetch and verify Silero VAD and the ECAPA speaker model. |
 | `dpkg-deb`, `fakeroot` | Build the package. |
 | `strip` (binutils) | Removes debug symbols — saves ~70 MB. |
 
@@ -147,6 +150,8 @@ budget on chain-of-thought before answering — 15–22 s per reply on this CPU,
 | `scipy`, `scikit-learn` | reachable only through openwakeword — ~126 MB removed by the build |
 | `hf_xet` | HuggingFace Xet transfer backend; models are baked in and `HF_HUB_OFFLINE=1` is set |
 | the `ollama` SDK | the LLM client speaks HTTP with stdlib `urllib`, so an optional feature adds no dependency |
+| `cerebras_cloud_sdk` | ~7 MB marginal (pydantic + pydantic-core; httpx/anyio/certifi are already vendored) and it covers **one** of the two providers. Its defaults — `DEFAULT_TIMEOUT=60`, `DEFAULT_MAX_RETRIES=2` — would allow ~180 s of blocking inside the loop that owns the microphone |
+| the `openai` SDK | would cover both providers, but requires `httpx2<3,>=2.7` while the vendored closure pins `httpx 0.28.1` for `huggingface_hub`; the build resolves everything into one flat `--target` directory, so that is a real collision |
 
 `av` is the exception that stays: it is unused at runtime, but
 `faster_whisper/audio.py` imports it unconditionally at package-import time.

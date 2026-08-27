@@ -5,7 +5,8 @@
 ```bash
 gideon --ui                 # or: python3 src/gideon/ui/tray.py
 gideon --ui --health        # one text snapshot, no GUI; exit 1 if offline
-gideon --ui --self-check    # assert which turns the HUD shows; exit 1 on failure
+gideon --ui --self-check    # assert which turns the HUD shows and what the bubbles say
+gideon --ui --demo          # replay a conversation through the HUD; no daemon needed
 gideon --ui --no-hud        # tray icon and health panel only
 gideon --ui --no-x11        # stay on the native backend
 ```
@@ -48,6 +49,23 @@ passing conversation on the desktop.
 talking, a wake phrase from cold, the daemon dying — each with the visibility it must
 produce. Add a row when you change the engagement rules in `hud.py`.
 
-It pumps the GTK loop for 400 ms per step before looking, because withdrawal is deferred to a
-250 ms timer: asking straight after `apply()` reports every hide as a failure, since the HUD
-is on its way out rather than staying up.
+`THREAD_CHECK` is the second half, and covers what the HUD became when it grew bubbles:
+*visible* is no longer the whole invariant — which bubbles a turn produced, and what they
+finally say, is what the user reads. It plays one complete conversation and checks the thread
+after each step, pinning down three rules from `hud.py`: your bubble is created while Gideon
+is still listening and the transcript streams into **that** bubble rather than a second one;
+Gideon's bubble appears empty while he thinks and fills in when the reply lands; and asking
+the same question twice still fills its own bubble, because the daemon's `reply` field is
+sticky and a naive "has it changed" test leaves it on the placeholder. An expected text of
+`None` means "the animated placeholder", whose exact frame depends on when the check looked.
+
+`_settle()` pumps the GTK loop for a beat before either half looks. Every animation here is a
+timer and withdrawal is deferred to a 250 ms one, so asking straight after `apply()` reports
+every hide as a failure and every streamed bubble as empty — the HUD is mid-animation, not
+wrong.
+
+## `--demo`
+
+The animations are the point of the HUD and cannot be asserted, only watched. `--demo`
+replays `THREAD_CHECK`'s conversation at conversational speed against no daemon, so "does it
+feel right" does not require a running Gideon and a wake phrase that lands.

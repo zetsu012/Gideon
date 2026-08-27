@@ -189,7 +189,10 @@ class HealthPanel(Gtk.Window):
         if last:
             self._section("Last heard", "")
             age = _human_age(max(0.0, time.time() - snap.get("transcript_at", 0)))
-            self._row("“%s”" % last, snap.get("transcript_kind") != "ignored",
+            # "denied" is the voice lock turning someone away: it belongs with
+            # "ignored" on the not-acted-on side, not with the answered turns.
+            self._row("“%s”" % last,
+                      snap.get("transcript_kind") not in ("ignored", "denied"),
                       "%s · %s ago" % (snap.get("transcript_kind", "?"), age),
                       snap.get("reply", ""))
         self.rows.show_all()

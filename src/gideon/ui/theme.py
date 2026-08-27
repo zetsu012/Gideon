@@ -33,8 +33,9 @@ SUBSYSTEMS = {
     "vad":     ("Voice activity", "Silero VAD - decides where an utterance starts and ends"),
     "stt":     ("Speech to text", "faster-whisper - transcribes every segment"),
     "tts":     ("Speech out", "Piper - synthesises the spoken reply"),
-    "llm":     ("Local brain", "Ollama - optional; canned replies without it"),
+    "llm":     ("Tier 1 brain", "Ollama, or a cloud provider - optional; canned replies without it"),
     "control": ("Control socket", "push-to-talk and this indicator"),
+    "speaker": ("Voice lock", "ECAPA - only the enrolled voice may wake Gideon"),
 }
 
 

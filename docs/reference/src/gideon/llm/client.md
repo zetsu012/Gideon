@@ -42,6 +42,13 @@ conversation does not inherit the last one.
 `SYSTEM` constrains replies to at most two short sentences of plain prose: the output is
 spoken, so markdown, lists and emoji are actively harmful.
 
+`for_speech()` enforces what `SYSTEM` only requests, and is shared with `llm/cloud.py`.
+Local models comply with the instruction; a cloud model is free to ignore it — `gpt-oss`
+answers in headings and tables by default — and the reply reaches the speakers before
+anyone can see it. Headings, bullets, emphasis, code fences, horizontal rules and link
+URLs are stripped; table rows become comma-separated clauses. Plain prose, including
+sentences containing hyphens, passes through untouched.
+
 | | |
 |---|---|
 | Imports | stdlib only (`json`, `logging`, `socket`, `urllib`) |

@@ -47,7 +47,7 @@ step "Installing Python dependencies (CPU-only, no CUDA)"
 uv pip install --python "$OPT/python/bin/python3" --target "$OPT/lib" \
     $(sed -e 's/#.*//' "$REQ_DIR/python-runtime.txt" | tr -d '\r' | xargs) >/dev/null
 
-step "Fetching models (piper voice, whisper $WHISPER_MODEL, silero VAD)"
+step "Fetching models (piper voice, whisper $WHISPER_MODEL, silero VAD, ECAPA speaker)"
 PYTHONPATH="$OPT/lib" "$OPT/python/bin/python3" - "$OPT" "$VOICE" "$WHISPER_MODEL" <<'PY'
 import sys, pathlib
 opt, voice, wmodel = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -65,6 +65,18 @@ SILERO_SHA="a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"
 curl -fsSL -o "$OPT/models/vad/silero_vad.onnx" "$SILERO_URL"
 echo "$SILERO_SHA  $OPT/models/vad/silero_vad.onnx" | sha256sum -c - >/dev/null \
   || { echo "!! silero_vad.onnx checksum mismatch - refusing to package" >&2; exit 1; }
+
+# ECAPA-TDNN speaker embedding, so only the enrolled voice can wake Gideon.
+# WeSpeaker's ONNX export, not SpeechBrain's checkpoint: SpeechBrain needs
+# PyTorch, which would multiply the size of this package, while this runs under
+# the onnxruntime already vendored for the VAD. Pinned by SHA for the same
+# reason the VAD is - a silently swapped embedder is a silently opened door.
+ECAPA_URL="https://huggingface.co/Wespeaker/wespeaker-ecapa-tdnn512-LM/resolve/main/voxceleb_ECAPA512_LM.onnx"
+ECAPA_SHA="d71b85d9b48058ef68004f04f1b78acebefb9dfcf542e19b976a12a5ad1f10b0"
+mkdir -p "$OPT/models/speaker"
+curl -fsSL -o "$OPT/models/speaker/ecapa_tdnn512_lm.onnx" "$ECAPA_URL"
+echo "$ECAPA_SHA  $OPT/models/speaker/ecapa_tdnn512_lm.onnx" | sha256sum -c - >/dev/null \
+  || { echo "!! ecapa_tdnn512_lm.onnx checksum mismatch - refusing to package" >&2; exit 1; }
 
 # Drop packages pulled in for features this daemon never touches:
 #   scipy/sklearn - only reached via openwakeword, which v0.1 does not use

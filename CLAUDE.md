@@ -27,9 +27,12 @@ sudo apt install libportaudio2      # once; the only library not vendored
 ./scripts/run-local.sh --once -v    # handle one utterance, verbose transcript logging
 ./scripts/run-local.sh --setup      # interactive: check install, start daemon, offer key setup
 ./scripts/run-local.sh --setup-key  # interactive: wire up the push-to-talk key only
+./scripts/run-local.sh --enroll     # interactive: record YOUR voiceprint (stop the daemon first)
+./scripts/run-local.sh --provider   # interactive: Tier 1 brain — Ollama, Cerebras or OpenRouter
 ./scripts/run-local.sh --ui         # tray icon + HUD + health panel (needs GTK from apt)
 ./scripts/run-local.sh --ui --health # one-shot text health report; exit 1 if offline
-./scripts/run-local.sh --ui --self-check  # assert which turns the HUD shows
+./scripts/run-local.sh --ui --self-check  # assert which turns the HUD shows, and its bubbles
+./scripts/run-local.sh --ui --demo   # replay a conversation through the HUD, no daemon
 ```
 
 `scripts/run-local.sh` reuses the staged runtime/models but puts `src/` first on `sys.path`, so
@@ -38,10 +41,12 @@ dependencies or models change (`VERSION=`, `WHISPER_MODEL=` env overrides; needs
 `curl`, `dpkg-deb`, `fakeroot`).
 
 There is no test suite. `--selftest` is the check: it loads every model and asserts wake
-matching, the Tier 0 router, TTS synthesis, and the control socket (status feed, and that a
+matching, the Tier 0 router, TTS synthesis, speaker separation, provider selection, and the control socket (status feed, and that a
 second daemon neither steals nor deletes a live socket). Add new invariants there. The UI has
 its own, `gideon --ui --self-check`, because GTK cannot be imported from the vendored runtime:
-it asserts **which turns the HUD shows** - key press and wake match yes, ambient speech no. Installed
+it asserts **which turns the HUD shows** - key press and wake match yes, ambient speech no -
+and **which bubbles each turn leaves in the thread**. `gideon --ui --demo` replays a scripted
+conversation for looking at the animations, which no check can assert. Installed
 behaviour is inspected via `systemctl --user {start,restart} gideon` and
 `journalctl --user -u gideon -f`.
 
@@ -54,7 +59,7 @@ Single-threaded pipeline in `__main__.py`, one package per concern
 → `speech/vad.py` (Silero v4 ONNX, per-frame speech probability)
 → `__main__.segments()` (turns frame probabilities into whole utterances)
 → `speech/stt.py` (faster-whisper) → `nlu/wake.py` (fuzzy transcript match)
-→ `nlu/brain.py` (router) → `llm/client.py` (Ollama over HTTP, optional)
+→ `speech/speaker.py` (is it the owner?) → `nlu/brain.py` (router) → `llm/client.py` (Ollama over HTTP, optional)
 → `speech/tts.py` (Piper) → speakers.
 `ipc/control.py` sits beside that pipeline: a unix-socket thread that lets an outside
 process arm the daemon (see "Push-to-talk" below) and streams `core/state.py`'s
@@ -77,6 +82,37 @@ Key cross-file behaviours that are not obvious from one file:
   pay model latency; Tier 1 = local LLM; Tier 2 (Claude Code headless) is an unwired branch in
   `brain.py`. The LLM is strictly optional: a missing/unreachable Ollama probes once, logs
   once, and degrades to canned replies — it must never crash or hang the daemon.
+- **Tier 1 may be local or cloud, and the choice is one factory.** `llm/__init__.build(cfg)`
+  returns `(client, health_detail, ok)`; `__main__` never branches on the provider and
+  `brain.py` never learns there is a choice. `llm_provider` is `ollama` (default, keeps
+  Gideon fully offline), `cerebras` or `openrouter` — the last two are OpenAI-compatible,
+  so `llm/cloud.py` serves both and `llm/provider.py` holds everything that differs.
+  **Cloud adds no Python dependency** (urllib, not an SDK), which is the point: every
+  dependency must be vendored into the `.deb`. Selecting a cloud provider is opt-in and
+  logged at every startup, because it is the one thing that sends speech off the machine.
+  A cloud failure falls back to Ollama, then to canned replies (`llm/fallback.py`) — a
+  dropped connection should cost the better model, not the assistant.
+- **Two non-obvious things break cloud providers.** Cloudflare fronts `api.cerebras.ai`
+  and answers urllib's *default* `Python-urllib/3.x` User-Agent with `403 error code:
+  1010`, which looks exactly like a bad API key — `llm/cloud.USER_AGENT` exists solely to
+  avoid that and `--selftest` pins it. And `gideon.service` sets `IPAddressDeny=any`
+  (Gideon was offline-first), enforced or not depending on BPF delegation for user units,
+  so `cli/provider.py` installs a drop-in that reopens outbound access when a cloud
+  provider is chosen and removes it when switching back.
+- **Replies are sanitised before they are spoken.** `SYSTEM` asks for plain prose;
+  `llm/client.for_speech()` enforces it. Local models comply, cloud models often do not
+  (`gpt-oss` answers in tables), and the text reaches the speakers before anyone sees it.
+- **Keys never go in `config.toml`.** `/etc/gideon/config.toml` is a world-readable
+  conffile. `core/credentials.py` owns `~/.config/gideon/credentials.toml`, created 0600
+  via `os.open` (write-then-chmod leaves the key briefly world-readable). Env vars
+  override the file.
+- **`Config.load()` does not merge, and `cli/provider.py` has to work around it.** The
+  first existing config file wins *entirely*, so writing `~/.config/gideon/config.toml`
+  would silently revert every `/etc` setting to its default. The wizard seeds the user
+  file from the system one before editing, and appends its settings in a marked block
+  that it rewrites wholesale. Both properties are asserted in `--selftest`. Related trap:
+  `CONFIG_PATHS` is built at **import** time, so `$GIDEON_CONFIG` cannot be changed from
+  inside a running process.
 - **Non-reasoning LLM only.** `qwen3`/`deepseek-r1` burn their token budget thinking
   (15–22 s/reply on a laptop CPU vs ~0.5 s for `llama3.2:1b`).
 - **Push-to-talk coexists with the wake phrase.** `ipc/control.py` binds
@@ -107,6 +143,20 @@ Key cross-file behaviours that are not obvious from one file:
   bridge. GTK **3**, not 4: the AppIndicator library links GTK 3 and the two cannot share a
   process. The HUD re-execs onto XWayland because Mutter has no layer-shell, so a
   Wayland-native window cannot be placed or kept on top.
+- **Wake matching says what, speaker verification says who.** `wake.match()` fires for
+  anyone in the room, so `speech/speaker.py` embeds the utterance with an ECAPA-TDNN
+  (WeSpeaker ONNX, under the already-vendored onnxruntime — **no torch, no new Python
+  dependency**) and compares it to the voiceprint from `gideon --enroll`. Gated: wake
+  matches and push-to-talk. NOT gated by default: the follow-up window, which can only be
+  open because a verified turn just happened (`speaker_verify_followup` turns it on).
+  Two rules that are easy to break: the verifier **fails open** — no voiceprint, no model,
+  or a load error means everyone is answered and the Voice lock health row says why,
+  because a failed download must not silently mute the assistant; and the numpy `fbank()`
+  is a hand-port of **Kaldi's**, which the model requires exactly — get it wrong and the
+  embeddings become meaningless while still returning confident numbers, which is why
+  `--selftest` asserts same-voice-vs-noise separation rather than merely loading the model.
+  `MIN_SPEECH_S` (0.4 s) accepts anything too short to score; it is a deliberate hole,
+  sized from measurements in `docs/reference/src/gideon/speech/speaker.md`.
 - **Config resolution.** `Config.load()` reads the first existing of `$GIDEON_CONFIG`,
   `~/.config/gideon/config.toml`, `/etc/gideon/config.toml` — first file wins entirely, no
   merging. Both top-level and one level of TOML sections are flattened onto the dataclass;
@@ -114,9 +164,9 @@ Key cross-file behaviours that are not obvious from one file:
 
 ## Layout
 
-`src/gideon/` is one package per concern: `core/` (config, state), `audio/` (capture),
-`speech/` (vad, stt, tts), `nlu/` (wake, brain), `llm/` (client), `ipc/` (control),
-`cli/` (setup, ui), `hotkey/` (system-python evdev scripts), `ui/` (system-python GTK
+`src/gideon/` is one package per concern: `core/` (config, state, credentials), `audio/` (capture),
+`speech/` (vad, stt, tts, speaker), `nlu/` (wake, brain), `llm/` (client, provider, cloud, fallback), `ipc/` (control),
+`cli/` (setup, ui, enroll, provider), `hotkey/` (system-python evdev scripts), `ui/` (system-python GTK
 indicator). `scripts/` is what a developer
 runs, `packaging/` is what a user ends up with, `requirements/` declares dependencies.
 Full rules in `docs/STRUCTURE.md`.

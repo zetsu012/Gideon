@@ -12,27 +12,36 @@ Gideon/
 │   ├── __init__.py                 Version only
 │   ├── __main__.py                 Daemon: CLI, endpointing, the pipeline loop
 │   ├── core/
-│   │   └── config.py               Every tunable; TOML resolution; model paths
+│   │   ├── config.py               Every tunable; TOML resolution; model paths
+│   │   ├── state.py                Pipeline state + per-subsystem health
+│   │   └── credentials.py          API keys, 0600, separate from the config
 │   ├── audio/
 │   │   └── capture.py              Microphone → bounded frame queue
 │   ├── speech/
 │   │   ├── vad.py                  Silero v4 voice-activity detection
 │   │   ├── stt.py                  faster-whisper speech to text
-│   │   └── tts.py                  Piper text to speech + playback
+│   │   ├── tts.py                  Piper text to speech + playback
+│   │   └── speaker.py              ECAPA-TDNN: is this the enrolled voice?
 │   ├── nlu/
 │   │   ├── wake.py                 Wake-phrase matching over the transcript
 │   │   └── brain.py                Tier 0/1/2 reply router
 │   ├── llm/
-│   │   └── client.py               Ollama HTTP client (Tier 1, optional)
+│   │   ├── client.py               Ollama HTTP client (Tier 1, optional)
+│   │   ├── provider.py             Cloud provider table (Cerebras, OpenRouter)
+│   │   ├── cloud.py                OpenAI-compatible cloud client
+│   │   └── fallback.py             Cloud first, local second
 │   ├── ipc/
 │   │   └── control.py              Unix socket: arms push-to-talk, publishes status
 │   ├── cli/
 │   │   ├── setup.py                `gideon --setup` / `--setup-key`
+│   │   ├── enroll.py               `gideon --enroll` — records the owner's voiceprint
+│   │   ├── provider.py             `gideon --provider` — picks the Tier 1 brain
 │   │   └── ui.py                   `gideon --ui` — execs the indicator
 │   ├── ui/                         Tray indicator — SYSTEM python, never imported
 │   │   ├── feed.py                 Subscribes to the daemon; reconnects; decides "offline"
 │   │   ├── theme.py                One palette and wording; draws the icons
-│   │   ├── hud.py                  On-screen overlay: state, transcript, reply
+│   │   ├── bubble.py               One chat bubble; the entry/stream animations
+│   │   ├── hud.py                  On-screen overlay: the chat thread and the state
 │   │   ├── panel.py                Health panel: one row per subsystem
 │   │   └── tray.py                 The indicator itself (entry point)
 │   └── hotkey/                     evdev key listener — SYSTEM python, never imported

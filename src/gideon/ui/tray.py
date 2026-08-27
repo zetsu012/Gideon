@@ -30,7 +30,8 @@ from gi.repository import GLib, Gtk                       # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import feed, theme                                        # noqa: E402
-from hud import Hud                                       # noqa: E402
+import bubble                                             # noqa: E402
+from hud import Hud, LINGER_S                             # noqa: E402
 from panel import HealthPanel                             # noqa: E402
 
 APP_ID = "gideon-indicator"
@@ -232,11 +233,92 @@ SELF_CHECK = [
     ("...being transcribed",          False, dict(state=feed.THINKING)),
     ("...and it was not for Gideon",  False, dict(state=feed.IDLE, transcript="anyway i told him",
                                                   transcript_kind="ignored", transcript_at=3.0)),
+    # The voice lock turning away a stranger is the one case where the wake
+    # phrase DID match and the HUD must still stay dark: showing it would put
+    # every rejected visitor's words on the owner's desktop.
+    ("a stranger said the wake phrase", False,
+     dict(state=feed.IDLE, transcript="hey gideon unlock the door",
+          transcript_kind="denied", transcript_at=3.0)),
     ("wake phrase, not yet ruled on", False, dict(state=feed.LISTENING)),
     ("wake phrase matched",           True,  dict(state=feed.THINKING, transcript="hey gideon hello",
                                                   transcript_kind="wake", transcript_at=4.0)),
     ("daemon gone",                   True,  dict(state=feed.OFFLINE)),
 ]
+
+
+# The HUD is a chat thread now, so *visible* is no longer the whole invariant:
+# which bubbles the turn produced, and what they finally say, is what the user
+# reads. This drives one complete conversation and checks the thread after each
+# step. The rules it pins down: the "you" bubble is created while Gideon is still
+# listening and the transcript streams into THAT bubble rather than a second one;
+# Gideon's bubble appears empty while he thinks and fills in when the reply
+# lands; and a repeated question still fills its own bubble (the daemon's `reply`
+# field is sticky, so a naive "has it changed" test would leave it on the dots).
+TURN = "what time is it"
+REPLY = "Just past three."
+THREAD_CHECK = [
+    # (label, snapshot overrides, expected [(who, text)] oldest first)
+    ("key arms Gideon",
+     dict(state=feed.IDLE, armed=True), []),
+    ("you start talking",
+     dict(state=feed.LISTENING, armed=True), [("you", None)]),
+    ("Whisper rules; it was for Gideon",
+     dict(state=feed.THINKING, armed=True, transcript=TURN,
+          transcript_kind="key", transcript_at=10.0),
+     [("you", TURN), ("gideon", None)]),
+    ("the reply arrives",
+     dict(state=feed.SPEAKING, transcript=TURN, transcript_kind="key",
+          transcript_at=10.0, reply=REPLY),
+     [("you", TURN), ("gideon", REPLY)]),
+    ("follow-up window",
+     dict(state=feed.FOLLOWUP, follow_for=8.0, transcript=TURN,
+          transcript_kind="key", transcript_at=10.0, reply=REPLY),
+     [("you", TURN), ("gideon", REPLY)]),
+    ("asked again in the follow-up",
+     dict(state=feed.THINKING, follow_for=6.0, transcript=TURN,
+          transcript_kind="follow", transcript_at=20.0, reply=REPLY),
+     [("gideon", REPLY), ("you", TURN), ("gideon", None)]),
+    ("same reply again",
+     dict(state=feed.SPEAKING, transcript=TURN, transcript_kind="follow",
+          transcript_at=20.0, reply=REPLY),
+     [("gideon", REPLY), ("you", TURN), ("gideon", REPLY)]),
+]
+
+
+def _settle(seconds: float = 0.45) -> None:
+    """Run the GTK loop for a beat.
+
+    Every animation here is a timer, and withdrawal is deferred to a 250 ms one,
+    so the loop has to actually run before asking what is on screen. Checking
+    straight after apply() would report every hide as a failure and every
+    streamed bubble as empty - the HUD is mid-animation, not wrong.
+    """
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        while Gtk.events_pending():
+            Gtk.main_iteration_do(False)
+        time.sleep(0.02)
+
+
+def thread_check() -> int:
+    """Play one conversation and check the bubbles it leaves on screen."""
+    hud = Hud()
+    base = dict(type="status", state=feed.IDLE, transcript="", transcript_kind="",
+                reply="", armed=False, follow_for=0.0, transcript_at=0.0)
+    failures = 0
+    for label, over, expected in THREAD_CHECK:
+        snap = dict(base); snap.update(over)
+        hud.apply(snap)
+        _settle()
+        got = [(b.who, b.label.get_text()) for b in hud._bubbles]
+        ok = len(got) == len(expected) and all(
+            who == w and (text.strip(bubble.DOT) == "" if t is None else text == t)
+            for (who, text), (w, t) in zip(got, expected))
+        failures += 0 if ok else 1
+        print("  %-4s %-34s %s" % ("ok" if ok else "FAIL", label,
+                                   "" if ok else "got %r wanted %r" % (got, expected)))
+    hud.destroy()
+    return failures
 
 
 def self_check() -> int:
@@ -249,23 +331,39 @@ def self_check() -> int:
         snap = dict(base)
         snap.update(over)
         hud.apply(snap)
-        # Withdrawal is deferred to a 250 ms timer, so the loop has to actually
-        # run before asking what is on screen. Checking straight after apply()
-        # would report every hide as a failure - the HUD is on its way out, not
-        # staying up.
-        deadline = time.time() + 0.4
-        while time.time() < deadline:
-            while Gtk.events_pending():
-                Gtk.main_iteration_do(False)
-            time.sleep(0.02)
+        _settle(0.4)
         got = hud.get_visible()
         if got != expected:
             failures += 1
         print("  %-4s %-34s hud %s (wanted %s)"
               % ("ok" if got == expected else "FAIL", label,
                  "shown" if got else "hidden", "shown" if expected else "hidden"))
+    hud.destroy()
+    print("-- thread contents --")
+    failures += thread_check()
     print("selftest %s" % ("OK" if not failures else "FAILED (%d)" % failures))
     return 1 if failures else 0
+
+
+def demo() -> int:
+    """Replay a conversation at conversational speed, for looking at.
+
+    The animations are the point of the HUD and cannot be asserted, only
+    watched. This exists so that "does it feel right" does not require talking
+    to a running daemon and getting the wake phrase to land.
+    """
+    hud = Hud()
+    base = dict(type="status", state=feed.IDLE, transcript="", transcript_kind="",
+                reply="", armed=False, follow_for=0.0, transcript_at=0.0)
+    script = [(over, pause) for (_l, over, _e), pause
+              in zip(THREAD_CHECK, (0.8, 1.6, 1.4, 2.2, 1.5, 1.4, 2.4))]
+    for over, pause in script:
+        snap = dict(base); snap.update(over)
+        hud.apply(snap)
+        _settle(pause)
+    hud.apply(dict(base))
+    _settle(LINGER_S + 1.0)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -278,6 +376,8 @@ def main(argv=None) -> int:
                     help="print one health snapshot as text and exit")
     ap.add_argument("--self-check", action="store_true", dest="self_check",
                     help="assert which turns the HUD shows, then exit")
+    ap.add_argument("--demo", action="store_true",
+                    help="play a scripted conversation through the HUD, no daemon needed")
     args = ap.parse_args(argv)
 
     if args.health:
@@ -306,6 +406,9 @@ def main(argv=None) -> int:
 
     if args.self_check:
         return self_check()
+
+    if args.demo:
+        return demo()
 
     lock = claim_singleton()
     if lock is None:

@@ -1,6 +1,6 @@
 """Gideon daemon: mic -> VAD endpointing -> Whisper -> wake match -> Piper."""
 from __future__ import annotations
-import argparse, collections, json, logging, shutil, signal, socket, sys, tempfile, time
+import argparse, collections, json, logging, os, shutil, signal, socket, sys, tempfile, time
 from pathlib import Path
 import numpy as np
 
@@ -11,10 +11,12 @@ from .audio.capture import Microphone
 from .speech.vad import VAD
 from .speech.stt import STT
 from .speech.tts import TTS
+from .speech.speaker import Verifier
 from .nlu import wake
 from .ipc.control import Control, send as control_send, status as control_status
 from .nlu.brain import Brain
 from .llm.client import LLM
+from . import llm as llm_factory
 
 log = logging.getLogger("gideon")
 _stop = False
@@ -77,6 +79,10 @@ def main(argv=None) -> int:
     ap.add_argument("--once", action="store_true", help="handle a single utterance then exit")
     ap.add_argument("--say", metavar="TEXT", help="speak TEXT and exit (audio smoke test)")
     ap.add_argument("--selftest", action="store_true", help="load all models, verify, exit")
+    ap.add_argument("--provider", action="store_true",
+                    help="choose the Tier 1 brain: local Ollama, Cerebras or OpenRouter")
+    ap.add_argument("--enroll", action="store_true",
+                    help="record your voice so only you can wake Gideon")
     ap.add_argument("--setup", action="store_true",
                     help="check the install, start the daemon, offer to wire up a key")
     ap.add_argument("--ui", nargs=argparse.REMAINDER,
@@ -102,6 +108,14 @@ def main(argv=None) -> int:
     if args.setup or args.setup_key:
         from .cli import setup as setup_mod
         return setup_mod.setup(cfg) if args.setup else setup_mod.setup_key(cfg)
+
+    if args.provider:
+        from .cli import provider as provider_mod
+        return provider_mod.configure(cfg)
+
+    if args.enroll:
+        from .cli import enroll as enroll_mod
+        return enroll_mod.enroll(cfg)
 
     # Everything below reports into the bus; the tray icon and HUD are a view
     # of it. Built first so even a failure during model loading is visible.
@@ -180,6 +194,133 @@ def main(argv=None) -> int:
             shutil.rmtree(probe_path.parent, ignore_errors=True)
         log.info("control socket + status feed OK (%s)", probe_sock.path)
 
+        # Tier 1 provider selection. None of this touches the network: what is
+        # worth pinning down is the wiring and the two ways it could quietly
+        # hurt someone - a user config that shadows /etc, and a key file others
+        # can read.
+        # NB: no `from . import llm as llm_factory` here. It is already imported
+        # at module level, and a function-local import of the same name would
+        # make it local to the WHOLE of main(), so the daemon path below would
+        # raise UnboundLocalError on every non-selftest start.
+        from .llm import provider as providers
+        from .core import credentials as creds
+        from .cli import provider as provider_cli
+        import dataclasses, stat as _stat
+
+        # An unknown provider name must degrade to the local client, not raise.
+        weird = dataclasses.replace(cfg, llm_provider="wat", llm_enabled=True)
+        client, detail, _ = llm_factory.build(weird)
+        assert isinstance(client, LLM), f"unknown provider gave {type(client).__name__}"
+        # A cloud provider with no key must fall back rather than construct a
+        # client that would fail on the first question the user asks.
+        nokey = dataclasses.replace(cfg, llm_provider="cerebras", cloud_model="x")
+        saved_env = os.environ.pop(providers.PROVIDERS["cerebras"].env_var, None)
+        saved_cred = creds.PATH
+        creds.PATH = Path(tempfile.mkdtemp(prefix="gideon-cred-")) / "credentials.toml"
+        try:
+            client, detail, ok_flag = llm_factory.build(nokey)
+            assert isinstance(client, LLM) and not ok_flag, detail
+            assert "no API key" in detail, detail
+
+            # Keys are written 0600 and never wider, and a second provider's key
+            # does not evict the first.
+            creds.save_api_key(providers.PROVIDERS["cerebras"], "secret-a")
+            creds.save_api_key(providers.PROVIDERS["openrouter"], "secret-b")
+            mode = creds.PATH.stat().st_mode
+            assert not mode & (_stat.S_IRWXG | _stat.S_IRWXO), \
+                f"credentials file is mode {oct(mode & 0o777)}, must be 0600"
+            assert creds.api_key(providers.PROVIDERS["cerebras"]) == "secret-a"
+            assert creds.api_key(providers.PROVIDERS["openrouter"]) == "secret-b"
+        finally:
+            shutil.rmtree(creds.PATH.parent, ignore_errors=True)
+            creds.PATH = saved_cred
+            if saved_env is not None:
+                os.environ[providers.PROVIDERS["cerebras"].env_var] = saved_env
+
+        # The wizard writes the user config, and Config.load() does NOT merge:
+        # the first file found wins entirely. So a fresh user config must be
+        # seeded from the system one, or every unrelated setting silently
+        # reverts to its default. This is the assertion that catches that.
+        saved_user, saved_sys = provider_cli.USER_CONFIG, provider_cli.SYSTEM_CONFIG
+        scratch = Path(tempfile.mkdtemp(prefix="gideon-conf-"))
+        try:
+            provider_cli.SYSTEM_CONFIG = scratch / "etc.toml"
+            provider_cli.SYSTEM_CONFIG.write_text(
+                '[wake]\nwake_fuzz = 0.61\n[tts]\nvoice = "custom-voice"\n')
+            provider_cli.USER_CONFIG = scratch / "user.toml"
+            provider_cli._write_config({"llm_provider": "cerebras", "cloud_model": "m1"})
+            text = provider_cli.USER_CONFIG.read_text()
+            assert "wake_fuzz = 0.61" in text and "custom-voice" in text, \
+                "the user config did not inherit the system settings it shadows"
+            # Re-running must replace the block, not stack copies of it.
+            provider_cli._write_config({"llm_provider": "openrouter", "cloud_model": "m2"})
+            text = provider_cli.USER_CONFIG.read_text()
+            assert text.count(provider_cli.BEGIN) == 1, "managed block was duplicated"
+            assert "m1" not in text and "m2" in text, "stale settings survived a rewrite"
+            # CONFIG_PATHS is built at import time, so $GIDEON_CONFIG cannot be
+            # changed from inside a running process - patch the list itself.
+            from .core import config as config_mod
+            saved_paths = config_mod.CONFIG_PATHS[:]
+            config_mod.CONFIG_PATHS[:] = [provider_cli.USER_CONFIG]
+            try:
+                reread = Config.load()
+            finally:
+                config_mod.CONFIG_PATHS[:] = saved_paths
+            assert reread.llm_provider == "openrouter" and reread.cloud_model == "m2", \
+                "the block Config.load() reads back does not match what was written"
+            assert reread.wake_fuzz == 0.61 and reread.voice == "custom-voice", \
+                "seeded settings were lost on the round trip"
+        finally:
+            provider_cli.USER_CONFIG, provider_cli.SYSTEM_CONFIG = saved_user, saved_sys
+            shutil.rmtree(scratch, ignore_errors=True)
+        # Cloudflare fronts api.cerebras.ai and answers urllib's default
+        # User-Agent with 403 "error code: 1010" - indistinguishable from a bad
+        # API key, and it cost a real debugging session. Pin the header so it
+        # cannot be dropped as decoration.
+        from .llm.cloud import CloudLLM, USER_AGENT
+        probe_headers = CloudLLM(providers.PROVIDERS["cerebras"], "m", "k")._headers()
+        assert "urllib" not in probe_headers.get("User-Agent", "").lower(), \
+            "the default urllib User-Agent is blocked by Cloudflare (HTTP 403/1010)"
+        assert probe_headers["User-Agent"] == USER_AGENT, probe_headers
+        assert probe_headers["Authorization"] == "Bearer k"
+        log.info("tier 1 provider wiring OK (%d cloud providers)", len(providers.PROVIDERS))
+
+        # Speaker verification: the fbank front end is a hand-port of Kaldi's,
+        # and a wrong one does not fail loudly - it yields embeddings that are
+        # merely meaningless. So assert the property only a correct front end
+        # can produce: two utterances from one voice must score far above a
+        # comparison against noise, and short clips must refuse to score at all.
+        from .speech import speaker as spk
+        if cfg.speaker_path.exists():
+            model = spk.SpeakerModel(cfg.speaker_path)
+
+            def _mono16k(text: str) -> np.ndarray:
+                pcm, sr = tts.synth(text)
+                a = pcm.astype(np.float32) / 32768.0
+                if sr != cfg.sample_rate:      # piper voices are 22.05 kHz
+                    n = int(len(a) * cfg.sample_rate / sr)
+                    a = np.interp(np.linspace(0, len(a) - 1, n),
+                                  np.arange(len(a)), a).astype(np.float32)
+                return a
+
+            ea = model.embed(_mono16k("The quick brown fox jumps over the lazy dog."))
+            eb = model.embed(_mono16k("Gideon should only ever answer to me."))
+            assert ea is not None and eb is not None, "speaker model returned no embedding"
+            same = spk.score(ea, eb)
+            # One voice, different words: measured 0.64-0.85 for this checkpoint.
+            # A broken front end lands near zero or pins every pair at ~1.0.
+            assert 0.45 < same < 0.995, f"same-voice score {same:.3f} is implausible"
+            noise = np.random.default_rng(0).normal(0, 0.05, cfg.sample_rate).astype(np.float32)
+            impostor = spk.score(ea, model.embed(noise))
+            assert impostor < cfg.speaker_threshold, \
+                f"noise scored {impostor:.3f}, at or above the accept threshold"
+            assert model.embed(np.zeros(1000, dtype=np.float32)) is None, \
+                "a 60 ms clip must be too short to embed"
+            log.info("speaker verification OK (same-voice %.2f, noise %.2f)", same, impostor)
+        else:
+            log.warning("speaker model absent (%s) - verification would fail open",
+                        cfg.speaker_path)
+
         pcm, sr = tts.synth("Self test passed.")
         log.info("selftest OK (vad+stt+tts+router loaded, %d samples @ %d Hz synthesised)",
                  len(pcm), sr)
@@ -188,18 +329,30 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    llm = LLM(cfg.llm_url, cfg.llm_model, cfg.llm_timeout) if cfg.llm_enabled else None
-    if llm is None:
+    if not cfg.llm_enabled:
+        llm = None
         bus.health_set("llm", True, "disabled in config - canned replies")
-    elif llm.available():
-        log.info("local LLM ready: %s", cfg.llm_model)
-        bus.health_set("llm", True, f"ollama {cfg.llm_model}")
     else:
-        # Not an error: a missing Ollama is a supported configuration. It is
-        # still worth showing, because "why are the answers canned" is exactly
+        # One factory decides local-vs-cloud, so nothing below this line has to
+        # know which is in use. A degraded result is not an error: a missing
+        # Ollama and an unreachable provider are both supported configurations.
+        # They are still shown, because "why are the answers canned" is exactly
         # the question the health panel exists to answer.
-        bus.health_set("llm", False, f"ollama unreachable at {cfg.llm_url} - canned replies")
+        llm, detail, ok = llm_factory.build(cfg)
+        log.info("tier 1: %s", detail)
+        bus.health_set("llm", ok, detail)
     brain = Brain(llm)
+
+    # Who may wake Gideon. Fail-open by design: an unenrolled or broken
+    # verifier answers everyone and says so here, rather than answering nobody.
+    verifier = Verifier(cfg.speaker_path, cfg.voiceprint_path,
+                        cfg.speaker_threshold) if cfg.speaker_verify else None
+    if verifier is None:
+        bus.health_set("speaker", False, "disabled in config - anyone can wake Gideon")
+    else:
+        if verifier.enabled:
+            verifier.warm()
+        bus.health_set("speaker", verifier.enabled, verifier.reason)
 
     # A push-to-talk key talks to this socket, and so does the tray UI; without
     # it the daemon is exactly as it was, wake-phrase only and invisible.
@@ -256,6 +409,21 @@ def main(argv=None) -> int:
 
             kind = ("key" if keyed and not matched else
                     "follow" if (in_window and not matched) else "wake")
+
+            # Only the enrolled voice gets in. The follow-up window is exempt by
+            # default (cfg.speaker_verify_followup): it can only be open because
+            # a verified turn just happened, and re-checking every sentence of a
+            # conversation costs an embedding each time.
+            if verifier is not None and (kind != "follow" or cfg.speaker_verify_followup):
+                accepted, sim = verifier.check(audio)
+                if not accepted:
+                    log.info("[%.2fs] DENY (%.2f < %.2f) %r",
+                             time.time() - t, sim, cfg.speaker_threshold, text)
+                    bus.heard(text, "denied")
+                    bus.set_state(resting)
+                    continue
+                if verifier.enabled:
+                    log.debug("speaker %.2f >= %.2f", sim, cfg.speaker_threshold)
             log.info("[%.2fs] %s %r", time.time() - t, kind.upper(), text)
             bus.heard(text, kind)
 

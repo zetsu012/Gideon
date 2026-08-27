@@ -14,8 +14,11 @@ _GREET_BACK = ["Hi.", "Hello.", "Hey there.", "Hi, I'm listening."]
 _ACK = ["Yes?", "I'm here.", "Go ahead."]
 _GREETINGS = ("hi", "hello", "hey", "good morning", "good evening", "good afternoon")
 # Said when there is no LLM and no rule matches - honest about the limitation.
-_NO_BRAIN = ("I heard you, but I can only say hello for now. "
-             "Install Ollama to give me a real answer.")
+# Deliberately does not name Ollama: Tier 1 may be a cloud provider that is
+# rate-limited or offline, and telling that user to install Ollama sends them
+# to fix the wrong thing. The logs and `gideon --ui --health` say which it is.
+_NO_BRAIN = ("I heard you, but I can only say hello right now. "
+             "My language model is not reachable.")
 
 
 class Brain:
