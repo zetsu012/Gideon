@@ -45,7 +45,7 @@ feed that shows what it is doing.
 |---|---|---|
 | **VAD** | Voice Activity Detection — a tiny model that answers "is someone talking right now?" 31 times a second | `speech/vad.py` (Silero v4, ONNX) |
 | **Endpointing** | Deciding when a sentence *ended*, so you can transcribe a whole thought instead of syllables | `__main__.segments()` |
-| **STT / ASR** | Speech-to-text | `speech/stt.py` (faster-whisper, `tiny.en`) |
+| **STT / ASR** | Speech-to-text | `speech/stt.py` (faster-whisper, `base.en`) |
 | **Wake phrase** | The name that means "this one's for you" | `nlu/wake.py` |
 | **Speaker verification** | Comparing a *voiceprint*, so only you are answered | `speech/speaker.py` (ECAPA-TDNN) |
 | **Embedding** | A voice squeezed into 192 numbers; two recordings of one person land near each other | `speech/speaker.py` |
@@ -107,14 +107,28 @@ Any new code path that speaks **must** repeat this sequence.
 ## 4. How it decides the words are for him
 
 There is **no wake-word model**. Whisper transcribes *every* segment, and
-`wake.match()` fuzzy-compares the head of the transcript against a list of
-phrases (`difflib` ratio ≥ 0.80).
+`wake.match()` fuzzy-compares the start of the transcript against a list of
+phrases, scoring on two levels and taking the better: `difflib` over the letters,
+and `difflib` over a **consonant skeleton** (`wake.skeleton()` — vowels dropped,
+consonants folded into Soundex-style equivalence classes). Both are scored over a
+sliding window of ±1 word, because a mishearing rarely preserves the word count
+("hey gideon" is two words, "hey giddy on" is three).
 
-That sounds wasteful and is deliberate: it needs no extra model, and it lets the
-config absorb the fact that **Whisper renders "Gideon" as "get in"** at every
-model size. `wake_phrases` therefore contains `hey get in`, `hey giddy on`,
-`hike it in` and friends. Those variants are load-bearing — trimming them to the
-ones that *look* correct breaks wake detection, and a bigger Whisper does not fix it.
+That sounds wasteful and is deliberate: it needs no extra model, and it absorbs
+the fact that **Whisper renders "Gideon" as "get in"** at every model size. It is
+not a homophone — the decoder swaps in whatever common English phrase shares the
+name's *consonant frame*, which is exactly what the skeleton normalises away:
+`get in`, `guidion`, `giddy on` and `kidin` all reduce to `78235`, the same code
+as `gideon`. One rule therefore covers mishearings nobody has hit yet, where the
+old hand-grown variant list could only cover the observed ones.
+
+`wake_phrases` consequently lists ways of *addressing* Gideon, not manglings of
+his name. The prefix guard is what keeps that safe: a candidate window must open
+with a word resembling the phrase's own first word, because the skeleton alone
+matches `get in the car` and `let me get in touch` perfectly well. The floor
+(`wake_fuzz`, 0.84) was measured against a positive/negative transcript set —
+below it, `they didn't say` and `a good idea` start waking him. `--selftest`
+asserts both lists.
 
 ```mermaid
 flowchart TD

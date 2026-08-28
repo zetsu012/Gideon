@@ -12,18 +12,23 @@ silence_end_ms  = 700     # trailing silence that ends an utterance
 max_segment_s   = 15.0
 
 [stt]
-whisper_model   = "tiny.en"   # base.en is more accurate, ~1.6x slower
+whisper_model   = "base.en"   # tiny.en is ~1.6x faster and noticeably worse on
+                              # short, quiet or accented speech
 whisper_compute = "int8"
 whisper_threads = 4
 
 [wake]
-# Whisper hears "Gideon" as "get in" - consistently, at every model size. These
-# phonetic variants are what actually make the wake phrase work; do not trim them
-# to the ones that "look right". Each keeps a "hey"/"hi" prefix so that ordinary
-# speech containing "get in" does not trigger Gideon.
-wake_phrases = ["hey gideon", "hey get in", "hey guidion", "hey giddy on",
-                "hi gideon", "hi get in", "a gideon", "hey kidding", "hike it in"]
-wake_fuzz    = 0.80       # lower = easier to trigger, more false accepts
+# Whisper hears "Gideon" as "get in" - consistently, at every model size. That
+# whole family of mishearings is handled by the consonant-skeleton matcher in
+# nlu/wake.py, which folds "get in", "guidion", "giddy on" and "kidin" onto the
+# same code as "gideon"; the list no longer has to enumerate them.
+# What this list IS: the ways of ADDRESSING Gideon. A candidate must open with a
+# word resembling one of these first words, which is what stops "get in the car"
+# from waking him. Add an entry for a new greeting, not a new mishearing.
+wake_phrases = ["hey gideon", "hi gideon", "ok gideon", "a gideon", "gideon"]
+wake_fuzz    = 0.84       # lower = easier to trigger, more false accepts.
+                          # Measured: below 0.84 "they didn't say" and "a good
+                          # idea" start waking him.
 
 [speaker]
 # Who may wake Gideon. The wake phrase is matched in the TRANSCRIPT, so without

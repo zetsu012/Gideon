@@ -146,6 +146,24 @@ def main(argv=None) -> int:
     if args.selftest:
         matched, rest = wake.match("hey gideon are you there", cfg.wake_phrases, cfg.wake_fuzz)
         assert matched and rest == "are you there", (matched, rest)
+        # The wake phrase list no longer enumerates mishearings of the name, so
+        # the matcher has to earn them. These are real Whisper renderings of
+        # "hey gideon"; if the consonant skeleton in wake.py regresses, they are
+        # the first thing to go silent and nothing else in the daemon notices.
+        for heard in ("hey get in", "hey guidion", "hey giddy on", "hey kidin",
+                      "hi get in", "ok gideon", "hey kidding", "gideon"):
+            assert wake.match(heard, cfg.wake_phrases, cfg.wake_fuzz)[0], \
+                f"wake regression: {heard!r} no longer matches"
+        # Loosening the matcher is only safe while ordinary speech stays out.
+        # "get in the car" carries the name's exact consonant frame and is
+        # rejected solely by the prefix guard - it is the canary for that guard.
+        for heard in ("get in the car", "let me get in touch", "they didn t say",
+                      "a good idea", "hey there how are you", "what time is it"):
+            assert not wake.match(heard, cfg.wake_phrases, cfg.wake_fuzz)[0], \
+                f"false wake: {heard!r} now matches"
+        # The remainder is the query. A window that keeps a syllable of the wake
+        # phrase hands the brain a corrupted question.
+        assert wake.match("hey get in there", cfg.wake_phrases, cfg.wake_fuzz)[1] == "there"
         b = Brain(None)                                  # no LLM: must not raise
         assert b.respond("") in ("Yes?", "I'm here.", "Go ahead."), "ack failed"
         assert b.respond("hello").startswith(("Hi", "Hello", "Hey")), "greeting failed"

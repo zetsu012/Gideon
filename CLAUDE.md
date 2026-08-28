@@ -9,6 +9,9 @@ Gideon: an always-on, fully offline voice assistant for Ubuntu (~470 lines of Py
 concept with no tool/command execution.
 
 Deep references: `docs/ARCHITECTURE.md` (the end-to-end design, with diagrams),
+`docs/problem-solutions/` (plain-language notes on problems we hit and why the fixes
+look the way they do — write one when a fix depends on a non-obvious reason, i.e. when
+the next person could delete your code because it looks redundant),
 `docs/DEPENDENCIES.md` (every dependency and who installs it),
 `docs/NEW-SYSTEM-SETUP.md` (installing on a fresh machine), `README.md` (usage).
 
@@ -68,9 +71,16 @@ Key cross-file behaviours that are not obvious from one file:
 
 - **Wake detection is transcript matching, not a wake-word model.** Whisper runs on every
   VAD-gated segment; `wake.match()` fuzzy-compares the head of the transcript against
-  `Config.wake_phrases`. Whisper renders "Gideon" as "get in" at *every* model size — the
-  phonetic variants in `wake_phrases` are load-bearing, not padding. Do not trim them to
-  the ones that look correct, and do not expect a bigger Whisper model to fix it.
+  `Config.wake_phrases`. Whisper renders "Gideon" as "get in" at *every* model size, and a
+  bigger Whisper does not fix it. That family is absorbed by `wake.skeleton()`: vowels
+  dropped, consonants folded into Soundex-style classes, so "get in", "guidion", "giddy
+  on" and "kidin" all reduce to the same code as "gideon". `match()` scores the better of
+  the grapheme and skeleton similarities over a **sliding** window (the mishearing rarely
+  preserves the word count), so `wake_phrases` no longer enumerates mishearings — it
+  enumerates ways of *addressing* Gideon. The prefix guard is what makes that safe: a
+  window must open with a word resembling the phrase's first word, because the skeleton
+  alone fires on "get in the car". Loosen either and `--selftest`'s false-wake list is the
+  thing that catches you.
 - **Follow-up window.** After a reply, `follow_until` keeps Gideon answering without a wake
   phrase for `followup_window_s` (8 s). Stop words ("stop", "never mind", "thanks") close it
   and reset LLM history. Log lines are tagged `WAKE` / `FOLLOW` / `----` — the fastest way to
