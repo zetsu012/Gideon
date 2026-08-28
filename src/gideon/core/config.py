@@ -36,14 +36,22 @@ class Config:
     # wake
     # Whisper reliably renders "Gideon" as "get in" - the name collapses onto a
     # far more common English phrase, and this does NOT improve with tiny -> base
-    # -> small. The variants below are therefore load-bearing, not padding.
-    # All require a "hey"-style prefix: bare "get in" would fire on ordinary speech.
+    # -> small. That family of mishearings is now handled by the consonant
+    # skeleton in nlu/wake.py ("get in", "guidion", "giddy on", "kidin" all share
+    # "gideon"'s consonant frame), so this list no longer enumerates them.
+    # What it enumerates instead is the PREFIX vocabulary: wake.match() requires
+    # a candidate to open with a word resembling the phrase's own first word,
+    # because the skeleton alone would fire on "get in the car". Add an entry
+    # here only for a new way of ADDRESSING Gideon, not for a new mishearing of
+    # the name - the matcher covers those.
     wake_phrases: tuple[str, ...] = (
-        "hey gideon", "hey get in", "hey guidion", "hey giddy on",
-        "hi gideon", "hi get in", "a gideon", "hey kidding", "hike it in",
+        "hey gideon", "hi gideon", "ok gideon", "a gideon", "gideon",
     )
-    wake_fuzz: float = 0.80         # difflib ratio floor; raised because the
-                                    # variant list now covers the real mishearings
+    wake_fuzz: float = 0.84         # floor on the better of the grapheme and
+                                    # skeleton similarities. Measured over a
+                                    # positive/negative transcript set: 0.84 is
+                                    # the lowest floor with no false wakes, and
+                                    # 0.80 admits "they didn't say"/"a good idea".
 
     # speaker verification
     # Wake matching is transcript matching: it cannot tell WHO spoke, so without

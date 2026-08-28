@@ -10,7 +10,7 @@ PKG=gideon
 VERSION="${VERSION:-0.1.0}"
 ARCH=amd64
 PYVER=3.12
-WHISPER_MODEL="${WHISPER_MODEL:-tiny.en}"
+WHISPER_MODEL="${WHISPER_MODEL:-base.en}"
 VOICE="${VOICE:-en_US-lessac-medium}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

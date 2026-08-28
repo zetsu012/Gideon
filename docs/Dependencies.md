@@ -93,7 +93,7 @@ v0.1 does not use it — see `docs/ARCHITECTURE.md` §5.
 
 | Model | Size | Role |
 |---|---|---|
-| `faster-whisper tiny.en` | 75 MB | Speech recognition, English-only. |
+| `faster-whisper base.en` | 141 MB | Speech recognition, English-only. `tiny.en` (75 MB) is ~1.6x faster and noticeably worse on short, quiet or accented speech. |
 | `piper en_US-lessac-medium` | 61 MB | The voice you hear. |
 | `silero_vad.onnx` (v4) | 1.8 MB | Decides which frames contain speech. |
 | `ecapa_tdnn512_lm.onnx` | 24 MB | Speaker embedding: decides whether the enrolled owner is speaking. WeSpeaker's ONNX export is used precisely so this needs no PyTorch — it runs on the `onnxruntime` already present for the VAD. SHA-pinned like Silero. |

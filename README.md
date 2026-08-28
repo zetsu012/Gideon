@@ -196,7 +196,7 @@ Measured on a ThinkPad T14 Gen 2i (i7-1165G7), CPU only, no GPU:
 
 | Stage | Time |
 |---|---|
-| Speech to text (`tiny.en`, int8) | 0.22–0.26 s |
+| Speech to text (`base.en`, int8) | 0.37–0.40 s (`tiny.en`: 0.22–0.26 s) |
 | LLM reply (`llama3.2:1b`) | 0.5 s simple, 1.7 s harder |
 | Speech synthesis (Piper) | 0.08 s |
 | **Full spoken round trip** | **≈0.9 s** |
@@ -220,7 +220,7 @@ Commonly changed:
 | `cloud_model` | — | Model id at that provider |
 | `followup_window_s` | `8.0` | Seconds to keep listening after a reply |
 | `wake_fuzz` | `0.80` | Lower = easier to trigger, more false accepts |
-| `whisper_model` | `tiny.en` | `base.en` is more accurate, ~1.5× slower |
+| `whisper_model` | `base.en` | `tiny.en` is ~1.6× faster and the accuracy floor |
 | `input_device` | auto | Set if the wrong mic is picked |
 | `speaker_verify` | `true` | Off = anyone may wake Gideon |
 | `speaker_threshold` | `0.45` | Higher = stricter; raise if a housemate gets through |
@@ -239,13 +239,17 @@ looks nothing like what you said, the problem is recognition, not matching.
 **It cannot hear you.** Check the right microphone is selected — `wpctl status`, then
 set `input_device` in the config.
 
-**Recognition accuracy is mediocre.** `tiny.en` is the smallest Whisper model and is
-the accuracy floor. Rebuild with `WHISPER_MODEL=base.en` for a real improvement at
-~1.5× the latency. Note this will *not* fix the wake phrase specifically — see below.
+**Recognition accuracy is limited by the model.** `base.en` is the default; rebuild
+with `WHISPER_MODEL=small.en` for a further improvement at more latency, or
+`tiny.en` to trade accuracy for speed. Model size does *not* fix the wake phrase
+specifically — see below.
 
 **"Gideon" is heard as "get in".** Expected, and handled. Whisper renders the name as
-"get in" at *every* model size; `wake_phrases` carries phonetic variants to absorb
-this. Do not trim that list to the entries that look correct — it will stop working.
+"get in" at *every* model size, because it swaps in the common English phrase sharing
+the name's consonant frame. `wake.skeleton()` normalises exactly that away, so the
+mishearings match without being listed. `wake_phrases` lists ways of *addressing*
+Gideon ("hey gideon", "ok gideon"); add an entry there for a new greeting, not for a
+new mangling of the name.
 
 ---
 
@@ -256,6 +260,7 @@ this. Do not trim that list to the entries that look correct — it will stop wo
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The end-to-end design: how it listens, decides, answers and installs |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | Every dependency: vendored, apt-installed, or manual |
 | [docs/NEW-SYSTEM-SETUP.md](docs/NEW-SYSTEM-SETUP.md) | Installing on a fresh machine |
+| [docs/problem-solutions/](docs/problem-solutions/) | Plain-language notes on problems we hit and why the fixes look the way they do |
 
 ## Roadmap
 
@@ -263,24 +268,3 @@ v0.1's router is shaped for the tiered brain in `docs/ARCHITECTURE.md` §5: Tier
 (timers, volume, launching apps), Tier 1 local LLM (**done**), Tier 2 Claude Code
 headless for hard questions. A trained wake-word model would replace the
 transcript-matching approach.
-curl --location 'https://api.cerebras.ai/v1/chat/completions' \
---header 'Content-Type: application/json' \
---header "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
---data '{
-  "model": "gpt-oss-120b",
-  "stream": false,
-  "messages": [{"content": "why is fast inference important?", "role": "user"}],
-  "temperature": 0,
-  "max_tokens": -1,
-  "seed": 0,
-  "top_p": 1
-}'
-curl https://api.cerebras.ai/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
-  -d '{
-    "model": "gpt-oss-120b",
-    "messages": [
-      {"role": "user", "content": "Why is fast inference important?"}
-    ]
-  }'
