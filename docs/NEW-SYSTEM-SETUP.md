@@ -78,5 +78,5 @@ the uinput forwarding).
 | `no daemon on ...` in the hotkey log | `gideon.service` not running, so presses are slow one-shots | `systemctl --user enable --now gideon` |
 | key arms but nothing is answered | nothing said within 10 s | speak right after the press, or raise `hotkey_window_s` in `/etc/gideon/config.toml` |
 
-Deeper detail: `docs/HOTKEY.md` (how the key and the wake phrase share one
-daemon) and `docs/ARCHITECTURE.md`.
+Deeper detail: `docs/ARCHITECTURE.md` (§7 covers how the key and the wake phrase
+share one daemon).

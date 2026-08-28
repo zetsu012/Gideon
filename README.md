@@ -59,7 +59,7 @@ systemctl --user enable --now gideon-ui
 gideon --ui --health           # or the same thing as text, over ssh
 ```
 
-See [docs/INDICATOR.md](docs/INDICATOR.md).
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §7.
 
 ### 3. Give it a brain (optional)
 
@@ -251,22 +251,15 @@ this. Do not trim that list to the entries that look correct — it will stop wo
 
 ## Documentation
 
-Start at **[docs/README.md](docs/README.md)** — the documentation index.
-
 | Document | Contents |
 |---|---|
-| [docs/STRUCTURE.md](docs/STRUCTURE.md) | Folder layout, where each concern lives, how to add a file |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a spoken sentence becomes a spoken reply, file by file |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The end-to-end design: how it listens, decides, answers and installs |
 | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | Every dependency: vendored, apt-installed, or manual |
-| [docs/reference/](docs/reference/README.md) | **One page per file** — purpose, API, invariants |
-| [docs/PLAN.md](docs/PLAN.md) | Design rationale, roadmap, and corrections found by measurement |
-| [docs/HOTKEY.md](docs/HOTKEY.md) | Push-to-talk: design and setup |
-| [docs/INDICATOR.md](docs/INDICATOR.md) | Tray icon, HUD and health panel |
 | [docs/NEW-SYSTEM-SETUP.md](docs/NEW-SYSTEM-SETUP.md) | Installing on a fresh machine |
 
 ## Roadmap
 
-v0.1's router is shaped for the tiered brain in `docs/PLAN.md`: Tier 0 rule intents
+v0.1's router is shaped for the tiered brain in `docs/ARCHITECTURE.md` §5: Tier 0 rule intents
 (timers, volume, launching apps), Tier 1 local LLM (**done**), Tier 2 Claude Code
 headless for hard questions. A trained wake-word model would replace the
 transcript-matching approach.

@@ -8,13 +8,12 @@ Gideon: an always-on, fully offline voice assistant for Ubuntu (~470 lines of Py
 `src/gideon/`). Wake detection, STT and TTS all run locally on CPU. v0.1 is a proof of
 concept with no tool/command execution.
 
-Deep references: `docs/README.md` (index), `docs/STRUCTURE.md` (folder layout and its
-rules), `docs/ARCHITECTURE.md` (the pipeline end to end), `docs/DEPENDENCIES.md` (every
-dependency and who installs it), `docs/reference/` (**one page per file**),
-`docs/PLAN.md` (design rationale, roadmap, measured corrections), `README.md` (usage).
+Deep references: `docs/ARCHITECTURE.md` (the end-to-end design, with diagrams),
+`docs/DEPENDENCIES.md` (every dependency and who installs it),
+`docs/NEW-SYSTEM-SETUP.md` (installing on a fresh machine), `README.md` (usage).
 
-**When you add or move a file, mirror it in `docs/reference/` and link it from
-`docs/reference/README.md`; when you add a dependency, update `requirements/`.**
+**When you add or move a file, keep `docs/ARCHITECTURE.md` §10 accurate; when you add
+a dependency, update `requirements/` and `docs/DEPENDENCIES.md`.**
 
 ## Commands
 
@@ -53,7 +52,7 @@ behaviour is inspected via `systemctl --user {start,restart} gideon` and
 ## Architecture
 
 Single-threaded pipeline in `__main__.py`, one package per concern
-(`core/ audio/ speech/ nlu/ llm/ ipc/ cli/ hotkey/ ui/` — see `docs/STRUCTURE.md`):
+(`core/ audio/ speech/ nlu/ llm/ ipc/ cli/ hotkey/ ui/` — see `docs/ARCHITECTURE.md` §10):
 
 `audio/capture.py` (callback thread → bounded queue, 16 kHz float32 512-sample frames)
 → `speech/vad.py` (Silero v4 ONNX, per-frame speech probability)
@@ -156,7 +155,7 @@ Key cross-file behaviours that are not obvious from one file:
   embeddings become meaningless while still returning confident numbers, which is why
   `--selftest` asserts same-voice-vs-noise separation rather than merely loading the model.
   `MIN_SPEECH_S` (0.4 s) accepts anything too short to score; it is a deliberate hole,
-  sized from measurements in `docs/reference/src/gideon/speech/speaker.md`.
+  sized from measurement.
 - **Config resolution.** `Config.load()` reads the first existing of `$GIDEON_CONFIG`,
   `~/.config/gideon/config.toml`, `/etc/gideon/config.toml` — first file wins entirely, no
   merging. Both top-level and one level of TOML sections are flattened onto the dataclass;
@@ -169,7 +168,7 @@ Key cross-file behaviours that are not obvious from one file:
 `cli/` (setup, ui, enroll, provider), `hotkey/` (system-python evdev scripts), `ui/` (system-python GTK
 indicator). `scripts/` is what a developer
 runs, `packaging/` is what a user ends up with, `requirements/` declares dependencies.
-Full rules in `docs/STRUCTURE.md`.
+Full rules in `docs/ARCHITECTURE.md` §10.
 
 ## Packaging
 

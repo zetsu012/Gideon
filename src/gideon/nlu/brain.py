@@ -1,6 +1,6 @@
 """Router. Tier 0 rules answer instantly; Tier 1 hands off to a local LLM.
 
-Shaped after docs/PLAN.md. Tier 0 exists because most of what gets said to a voice
+Tier 0 exists because most of what gets said to a voice
 assistant is a pattern, not a reasoning problem, and a 4B model on a laptop CPU
 costs 1-2 s that a greeting does not need to spend. Tier 2 (Claude Code) is not
 wired yet; the branch below is where it goes.

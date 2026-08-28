@@ -5,8 +5,7 @@ inside it, what you install by hand, and what is deliberately left out.
 
 The machine-readable manifests live in [`requirements/`](../requirements/) —
 `python-runtime.txt` is **read by the build**, the rest mirror `packaging/debian/control`
-and the `need` checks in `scripts/build-deb.sh`. See
-[`docs/reference/requirements/README.md`](reference/requirements/README.md).
+and the `need` checks in `scripts/build-deb.sh`.
 
 **Summary.** One apt command installs everything required. The vendored Python, all 28
 Python packages and all four models are inside the package — first run needs no network.
@@ -85,7 +84,7 @@ converter for cairo.Context"*. `gideon --ui` probes for it up front and prints t
 | `pyyaml`, `filelock`, `fsspec`, `tqdm`, `packaging`, `protobuf`, `flatbuffers`, `cffi`, `pycparser`, `click`, `setuptools`, `typing-extensions`, `pathvalidate` | ~10 MB | Transitive dependencies. |
 
 **Deliberately excluded:** `openwakeword` (and with it `scipy` + `sklearn`, ~126 MB).
-v0.1 does not use it — see `docs/ARCHITECTURE.md` §6.
+v0.1 does not use it — see `docs/ARCHITECTURE.md` §5.
 
 **Not a Python dependency at all:** Ollama. Gideon talks to it over HTTP with
 `urllib` from the standard library, which is why the LLM is fully optional.
