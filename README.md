@@ -268,24 +268,3 @@ v0.1's router is shaped for the tiered brain in `docs/ARCHITECTURE.md` §5: Tier
 (timers, volume, launching apps), Tier 1 local LLM (**done**), Tier 2 Claude Code
 headless for hard questions. A trained wake-word model would replace the
 transcript-matching approach.
-curl --location 'https://api.cerebras.ai/v1/chat/completions' \
---header 'Content-Type: application/json' \
---header "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
---data '{
-  "model": "gpt-oss-120b",
-  "stream": false,
-  "messages": [{"content": "why is fast inference important?", "role": "user"}],
-  "temperature": 0,
-  "max_tokens": -1,
-  "seed": 0,
-  "top_p": 1
-}'
-curl https://api.cerebras.ai/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
-  -d '{
-    "model": "gpt-oss-120b",
-    "messages": [
-      {"role": "user", "content": "Why is fast inference important?"}
-    ]
-  }'
