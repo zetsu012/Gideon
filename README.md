@@ -50,6 +50,17 @@ journalctl --user -u gideon -f     # watch it listen
 
 It starts automatically at every login from now on. Say **"hey gideon"**.
 
+To see that it is running — a tray icon with the live state, an on-screen HUD and a health
+panel:
+
+```bash
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+systemctl --user enable --now gideon-ui
+gideon --ui --health           # or the same thing as text, over ssh
+```
+
+See [docs/INDICATOR.md](docs/INDICATOR.md).
+
 ### 3. Give it a brain (optional)
 
 Without this, Gideon answers greetings and honestly says it cannot do more.
@@ -69,6 +80,30 @@ systemd service that starts on boot; Gideon talks to it over HTTP on port 11434.
 > for `llama3.2:1b`. `llama3.2:3b` also works and is a little more articulate, but
 > is ~2.5× slower.
 
+#### ...or use a cloud model instead
+
+A 1B model on a laptop CPU is the weakest part of Gideon. If you would rather trade
+privacy for far better and faster answers, point Tier 1 at **Cerebras** or
+**OpenRouter**:
+
+```bash
+gideon --provider
+```
+
+The wizard asks which provider, takes your API key, lists that provider's models so you
+can pick one, and asks it a test question before saving anything. The key goes to
+`~/.config/gideon/credentials.toml` (mode `0600`) — never into `config.toml`, which is
+world-readable.
+
+> **This is the one thing that sends your speech off the machine.** Your transcript is
+> sent to that provider for every Tier 1 question. Wake detection, speech-to-text,
+> speaker verification and the voice all still run locally, and Gideon logs the provider
+> it is using every time it starts.
+
+If the provider is unreachable, out of credit or slow, Gideon falls back to your local
+Ollama model, and then to canned replies — a dropped connection costs you the better
+model, not the assistant. Run `gideon --provider` and choose Ollama to switch back.
+
 ### 4. Talk to it
 
 After each reply Gideon stays open for **8 seconds**, so a conversation does not need
@@ -84,8 +119,33 @@ gideon:  The result of 17 times 23 is 391.
 ```
 
 Say "stop", "never mind" or "thanks" to close the window early. The logs mark every
-utterance `WAKE`, `FOLLOW` or `----` (ignored), which is the fastest way to see what
-Gideon actually heard.
+utterance `WAKE`, `FOLLOW`, `DENY` or `----` (ignored), which is the fastest way to see
+what Gideon actually heard.
+
+### 5. Make it answer only to you
+
+The wake phrase is matched in the transcript, so out of the box *anyone* who says
+"hey gideon" is answered. Record your voiceprint and Gideon ignores everyone else:
+
+```bash
+systemctl --user stop gideon
+gideon --enroll                     # read five phrases out loud
+systemctl --user start gideon
+```
+
+Gideon has to be stopped first because it holds the microphone. Enrolling compares each
+utterance against an ECAPA-TDNN voiceprint stored at `~/.config/gideon/voiceprint.npy`;
+nothing leaves the machine, and no extra dependency is installed. Rejected utterances are
+logged `DENY` with the similarity score.
+
+Two things worth knowing:
+
+* **Until you enroll, verification is off** and everyone is answered. The tray health
+  panel says so on the **Voice lock** row. It fails open on purpose — a broken model
+  download should not silently stop Gideon answering *you*.
+* **The follow-up window is not checked** by default. It only opens after a turn that was
+  already verified, but for the next 8 seconds anyone can speak into it. Set
+  `speaker_verify_followup = true` to close that too.
 
 ### Uninstall
 
@@ -102,27 +162,27 @@ For hacking on it, without installing anything system-wide:
 
 ```bash
 sudo apt install libportaudio2    # once - the only library not vendored
-./packaging/build-deb.sh          # once - stages the runtime and models
-./run-local.sh                    # start listening
+./scripts/build-deb.sh            # once - stages the runtime and models
+./scripts/run-local.sh            # start listening
 ```
 
 | Command | Does |
 |---|---|
-| `./run-local.sh` | Start listening |
-| `./run-local.sh --selftest` | Verify models — works without PortAudio |
-| `./run-local.sh --say "hi"` | Speaker test |
-| `./run-local.sh --once -v` | Handle one utterance, verbose |
+| `./scripts/run-local.sh` | Start listening |
+| `./scripts/run-local.sh --selftest` | Verify models — works without PortAudio |
+| `./scripts/run-local.sh --say "hi"` | Speaker test |
+| `./scripts/run-local.sh --once -v` | Handle one utterance, verbose |
 
-`run-local.sh` reuses the vendored Python and models staged under `build/stage/`,
+`scripts/run-local.sh` reuses the vendored Python and models staged under `build/stage/`,
 but puts `src/` first on `sys.path`, so your edits take effect on the next run with
 no rebuild. Only re-run `build-deb.sh` when dependencies or models change.
 
 ### Build the package
 
 ```bash
-./packaging/build-deb.sh                          # -> build/gideon_0.1.0_amd64.deb
-WHISPER_MODEL=base.en ./packaging/build-deb.sh    # more accurate, slower
-VERSION=0.2.0 ./packaging/build-deb.sh
+./scripts/build-deb.sh                          # -> build/gideon_0.1.0_amd64.deb
+WHISPER_MODEL=base.en ./scripts/build-deb.sh    # more accurate, slower
+VERSION=0.2.0 ./scripts/build-deb.sh
 ```
 
 Needs `uv`, `curl`, `dpkg-deb` and `fakeroot`. The build bakes the models in, so the
@@ -155,17 +215,22 @@ Commonly changed:
 
 | Setting | Default | Notes |
 |---|---|---|
-| `llm_model` | `llama3.2:1b` | Must be a non-reasoning model |
+| `llm_model` | `llama3.2:1b` | Local model; must be non-reasoning |
+| `llm_provider` | `ollama` | `ollama`, `cerebras` or `openrouter` — set via `gideon --provider` |
+| `cloud_model` | — | Model id at that provider |
 | `followup_window_s` | `8.0` | Seconds to keep listening after a reply |
 | `wake_fuzz` | `0.80` | Lower = easier to trigger, more false accepts |
 | `whisper_model` | `tiny.en` | `base.en` is more accurate, ~1.5× slower |
 | `input_device` | auto | Set if the wrong mic is picked |
+| `speaker_verify` | `true` | Off = anyone may wake Gideon |
+| `speaker_threshold` | `0.45` | Higher = stricter; raise if a housemate gets through |
+| `speaker_verify_followup` | `false` | Also verify inside the 8 s follow-up window |
 
 ---
 
 ## Troubleshooting
 
-**It never responds.** Run `./run-local.sh -v` and watch the transcript lines. Every
+**It never responds.** Run `./scripts/run-local.sh -v` and watch the transcript lines. Every
 speech segment is logged with what Whisper heard and whether it matched. If the text
 looks nothing like what you said, the problem is recognition, not matching.
 
@@ -186,10 +251,18 @@ this. Do not trim that list to the entries that look correct — it will stop wo
 
 ## Documentation
 
+Start at **[docs/README.md](docs/README.md)** — the documentation index.
+
 | Document | Contents |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Every file explained, full dependency list with rationale |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md) | Folder layout, where each concern lives, how to add a file |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How a spoken sentence becomes a spoken reply, file by file |
+| [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) | Every dependency: vendored, apt-installed, or manual |
+| [docs/reference/](docs/reference/README.md) | **One page per file** — purpose, API, invariants |
 | [docs/PLAN.md](docs/PLAN.md) | Design rationale, roadmap, and corrections found by measurement |
+| [docs/HOTKEY.md](docs/HOTKEY.md) | Push-to-talk: design and setup |
+| [docs/INDICATOR.md](docs/INDICATOR.md) | Tray icon, HUD and health panel |
+| [docs/NEW-SYSTEM-SETUP.md](docs/NEW-SYSTEM-SETUP.md) | Installing on a fresh machine |
 
 ## Roadmap
 
@@ -197,3 +270,24 @@ v0.1's router is shaped for the tiered brain in `docs/PLAN.md`: Tier 0 rule inte
 (timers, volume, launching apps), Tier 1 local LLM (**done**), Tier 2 Claude Code
 headless for hard questions. A trained wake-word model would replace the
 transcript-matching approach.
+curl --location 'https://api.cerebras.ai/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
+--data '{
+  "model": "gpt-oss-120b",
+  "stream": false,
+  "messages": [{"content": "why is fast inference important?", "role": "user"}],
+  "temperature": 0,
+  "max_tokens": -1,
+  "seed": 0,
+  "top_p": 1
+}'
+curl https://api.cerebras.ai/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${csk-jc3p3j8txexw6j38m862y283t3we8wxvc9tryx493mr48f32}" \
+  -d '{
+    "model": "gpt-oss-120b",
+    "messages": [
+      {"role": "user", "content": "Why is fast inference important?"}
+    ]
+  }'

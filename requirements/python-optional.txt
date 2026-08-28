@@ -1,0 +1,9 @@
+# Python packages that are NOT installed and NOT required.
+#
+# Kept here so the exclusion is a decision on record rather than an omission.
+# scripts/build-deb.sh actively deletes the first three after resolution.
+
+scipy                 # pulled in by openwakeword only; v0.1 does not use openwakeword
+scikit-learn          # same - openwakeword only
+hf_xet                # HuggingFace Xet transfer backend; models are baked in, HF is offline
+openwakeword          # replaced by transcript-based wake matching (src/gideon/nlu/wake.py)

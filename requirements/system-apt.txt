@@ -1,0 +1,28 @@
+# System packages the .deb declares in its Depends: field.
+#
+# apt installs all of these automatically with `sudo apt install ./gideon_*.deb`.
+# This file mirrors packaging/debian/control - keep the two in sync.
+
+libc6 (>= 2.35)       # base C library
+libstdc++6            # C++ runtime for onnxruntime / ctranslate2
+libgomp1              # OpenMP; CTranslate2 threads Whisper inference across cores
+libportaudio2         # dlopen()ed by sounddevice - the mic and speakers
+libsndfile1           # audio file I/O used by the piper/sounddevice stack
+python3-evdev         # keyboard grab for push-to-talk (system python, not vendored)
+python3               # interpreter that EXECUTES src/gideon/hotkey/* (not the app itself)
+
+# Recommends: (installed by default, not hard requirements)
+pipewire              # audio server
+pipewire-pulse        # PulseAudio compatibility layer
+wireplumber           # PipeWire session manager
+#
+# The tray indicator (gideon --ui). Recommends, not Depends: the daemon is fully
+# functional headless, and a server install should not pull in GTK. All four run
+# on the SYSTEM python - src/gideon/ui/* is EXECUTED, never imported, exactly
+# like src/gideon/hotkey/*.
+python3-gi            # PyGObject: the GTK binding
+python3-gi-cairo      # PyGObject's cairo bridge - without it the drawn HUD orb
+                      # fails at RUNTIME, not import time; the window still opens
+gir1.2-gtk-3.0        # GTK 3 typelib (GTK 4 cannot share a process with the
+                      # indicator library below, which links GTK 3)
+gir1.2-ayatanaappindicator3-0.1   # StatusNotifierItem tray icon
