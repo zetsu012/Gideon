@@ -268,3 +268,5 @@ v0.1's router is shaped for the tiered brain in `docs/ARCHITECTURE.md` §5: Tier
 (timers, volume, launching apps), Tier 1 local LLM (**done**), Tier 2 Claude Code
 headless for hard questions. A trained wake-word model would replace the
 transcript-matching approach.
+
+---
